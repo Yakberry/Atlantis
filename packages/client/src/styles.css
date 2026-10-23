@@ -45,3 +45,6 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .messages { flex: 1; overflow-y: auto; list-style: none; margin: 0; padding: 0; }
 .messages li { padding: 0.15rem 0; overflow-wrap: anywhere; }
 .messages li.mine strong { color: var(--accent); }
+
+button.secondary { background: transparent; border-color: var(--line); color: var(--text); font-weight: 400; }
+.messages li.system { color: var(--muted); font-style: italic; }

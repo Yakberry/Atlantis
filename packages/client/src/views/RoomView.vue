@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from 'vue';
+import { onBeforeUnmount, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import ChatPanel from '../components/ChatPanel.vue';
 import GameBoard from '../components/GameBoard.vue';
 import PlayerList from '../components/PlayerList.vue';
@@ -8,16 +9,23 @@ import { useRoomStore } from '../stores/room';
 
 const props = defineProps<{ id: string }>();
 const store = useRoomStore();
-const { error, run } = useAction();
+const router = useRouter();
+const { error: joinError, run: tryJoin } = useAction();
+const { error: actionError, run } = useAction();
 const link = location.href;
 
-watch(() => props.id, (id) => run(() => store.join(id)), { immediate: true });
-onBeforeUnmount(() => store.leave());
+async function leaveRoom() {
+  await store.leave();
+  await router.push({ name: 'lobby' });
+}
+
+watch(() => props.id, (id) => tryJoin(() => store.join(id)), { immediate: true });
+onBeforeUnmount(() => store.detach());
 </script>
 
 <template>
   <main class="page">
-    <p v-if="error" class="error">{{ error }} <RouterLink to="/">В лобби</RouterLink></p>
+    <p v-if="joinError" class="error">{{ joinError }} <RouterLink to="/">В лобби</RouterLink></p>
 
     <div v-else-if="store.room" class="room">
       <section class="panel stack">
@@ -32,6 +40,9 @@ onBeforeUnmount(() => store.leave());
           <p v-else class="muted">Ждём, пока хост начнёт игру.</p>
         </template>
         <GameBoard v-else />
+
+        <p v-if="actionError" class="error">{{ actionError }}</p>
+        <button class="secondary" @click="run(leaveRoom)">Выйти из комнаты</button>
       </section>
 
       <ChatPanel />

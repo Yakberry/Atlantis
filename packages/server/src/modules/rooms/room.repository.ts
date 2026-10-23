@@ -16,11 +16,25 @@ export async function findRoom(db: Db, id: string, { lock = false } = {}): Promi
   return rows[0] ?? null;
 }
 
-export async function updateRoom(db: Db, id: string, patch: { status?: RoomStatus; game?: GameState }): Promise<void> {
+/** Обновляет только переданные поля. */
+export async function updateRoom(
+  db: Db,
+  id: string,
+  patch: { status?: RoomStatus; hostId?: string; game?: GameState },
+): Promise<void> {
   await db.query(
-    'update rooms set status = coalesce($2, status), game = coalesce($3, game) where id = $1',
-    [id, patch.status ?? null, patch.game ? JSON.stringify(patch.game) : null],
+    `update rooms
+        set status  = coalesce($2, status),
+            host_id = coalesce($3, host_id),
+            game    = coalesce($4, game)
+      where id = $1`,
+    [id, patch.status ?? null, patch.hostId ?? null, patch.game ? JSON.stringify(patch.game) : null],
   );
+}
+
+/** Сообщения и участники удаляются каскадом. */
+export async function deleteRoom(db: Db, id: string): Promise<void> {
+  await db.query('delete from rooms where id = $1', [id]);
 }
 
 export async function addMember(db: Db, roomId: string, playerId: string): Promise<void> {
@@ -28,6 +42,10 @@ export async function addMember(db: Db, roomId: string, playerId: string): Promi
     'insert into room_members (room_id, player_id) values ($1, $2) on conflict do nothing',
     [roomId, playerId],
   );
+}
+
+export async function removeMember(db: Db, roomId: string, playerId: string): Promise<void> {
+  await db.query('delete from room_members where room_id = $1 and player_id = $2', [roomId, playerId]);
 }
 
 export async function listMembers(db: Db, roomId: string): Promise<Player[]> {

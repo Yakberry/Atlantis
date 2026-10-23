@@ -18,4 +18,6 @@ export type ChatMessage = {
   author: Player;
   text: string;
   sentAt: string;
+  /** Служебное сообщение (выход игрока и т.п.), а не реплика игрока. */
+  system: boolean;
 };

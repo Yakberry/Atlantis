@@ -21,7 +21,7 @@ export const useRoomStore = defineStore('room', () => {
     const s = createSocket(sessionStore.session.token);
     s.on('connect', () => {
       // Реконнект: возвращаемся в комнату и получаем актуальное состояние.
-      if (room.value) void join(room.value.id).catch(() => (room.value = null));
+      if (room.value) void join(room.value.id).catch(reset);
     });
     s.on('connect_error', (error) => {
       if (error.message === 'unauthorized') sessionStore.signOut();
@@ -36,6 +36,11 @@ export const useRoomStore = defineStore('room', () => {
     return room.value.id;
   };
 
+  function reset(): void {
+    room.value = null;
+    messages.value = [];
+  }
+
   async function createRoom(): Promise<string> {
     return unwrap(await connect().emitWithAck('room:create')).id;
   }
@@ -46,10 +51,16 @@ export const useRoomStore = defineStore('room', () => {
     messages.value = joined.history;
   }
 
-  function leave(): void {
-    socket?.emit('room:leave');
-    room.value = null;
-    messages.value = [];
+  /** Выйти из комнаты насовсем. */
+  async function leave(): Promise<void> {
+    unwrap(await connect().emitWithAck('room:leave', { roomId: currentRoomId() }));
+    reset();
+  }
+
+  /** Экран комнаты закрыт, но мы остаёмся её участником: просто перестаём слушать события. */
+  function detach(): void {
+    socket?.emit('room:detach');
+    reset();
   }
 
   const startGame = async () =>
@@ -61,5 +72,8 @@ export const useRoomStore = defineStore('room', () => {
   const sendMessage = async (text: string) =>
     unwrap(await connect().emitWithAck('chat:send', { roomId: currentRoomId(), text }));
 
-  return { room, messages, isHost, isMyTurn, canStart, createRoom, join, leave, startGame, sendAction, sendMessage };
+  return {
+    room, messages, isHost, isMyTurn, canStart,
+    createRoom, join, leave, detach, startGame, sendAction, sendMessage,
+  };
 });

@@ -2,6 +2,7 @@ import { randomInt } from 'node:crypto';
 import {
   applyAction,
   createGame,
+  removePlayer,
   MAX_PLAYERS,
   MIN_PLAYERS,
   type GameAction,
@@ -36,6 +37,31 @@ export const joinRoom = (player: Player, roomId: string): Promise<RoomSnapshot> 
     return loadSnapshot(db, roomId);
   });
 
+/**
+ * Выход насовсем. Возвращает `null`, если комната опустела и была удалена.
+ * Хост уходит — роль достаётся тому, кто вошёл раньше остальных.
+ */
+export const leaveRoom = (player: Player, roomId: string): Promise<RoomSnapshot | null> =>
+  transaction(async (db) => {
+    const room = await requireRoom(db, roomId, { lock: true });
+    if (!(await repo.isMember(db, roomId, player.id))) throw new AppError('Вы не состоите в этой комнате');
+
+    await repo.removeMember(db, roomId, player.id);
+    const [heir] = await repo.listMembers(db, roomId);
+    if (!heir) {
+      await repo.deleteRoom(db, roomId);
+      return null;
+    }
+
+    const game = room.status === 'playing' && room.game ? removePlayer(room.game, player.id) : undefined;
+    await repo.updateRoom(db, roomId, {
+      hostId: room.hostId === player.id ? heir.id : undefined,
+      game,
+      status: game?.winnerId ? 'finished' : undefined,
+    });
+    return loadSnapshot(db, roomId);
+  });
+
 export const startGame = (player: Player, roomId: string): Promise<RoomSnapshot> =>
   transaction(async (db) => {
     const room = await requireRoom(db, roomId, { lock: true });
@@ -57,7 +83,10 @@ export const performAction = (player: Player, roomId: string, action: GameAction
     const result = applyAction(room.game, player.id, action);
     if (!result.ok) throw new AppError(result.error);
 
-    await repo.updateRoom(db, roomId, { game: result.value });
+    await repo.updateRoom(db, roomId, {
+      game: result.value,
+      status: result.value.winnerId ? 'finished' : undefined,
+    });
     return loadSnapshot(db, roomId);
   });
 

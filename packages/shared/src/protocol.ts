@@ -12,7 +12,10 @@ type ChatSendPayload = z.input<typeof chatSendSchema>;
 export interface ClientToServerEvents {
   'room:create': (ack: Ack<RoomSnapshot>) => void;
   'room:join': (payload: RoomRef, ack: Ack<{ room: RoomSnapshot; history: ChatMessage[] }>) => void;
-  'room:leave': () => void;
+  /** Выйти из комнаты насовсем. */
+  'room:leave': (payload: RoomRef, ack: Ack<void>) => void;
+  /** Закрыли экран комнаты, но остались участником: перестать получать её события. */
+  'room:detach': () => void;
   'game:start': (payload: RoomRef, ack: Ack<void>) => void;
   'game:action': (payload: GameActionPayload, ack: Ack<void>) => void;
   'chat:send': (payload: ChatSendPayload, ack: Ack<void>) => void;

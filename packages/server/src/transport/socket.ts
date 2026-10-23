@@ -70,11 +70,23 @@ export function registerSocket(io: AppServer): void {
         const room = await rooms.joinRoom(player, roomId);
         await enter(room.id);
         io.to(room.id).emit('room:updated', room);
-        return { room, history: await chat.getHistory(room.id) };
+          io.to(roomId).emit('chat:message', await chat.announce(roomId, player, `Игрок ${player.name} подключился`));
+          return { room, history: await chat.getHistory(room.id) };
       }),
     );
 
-    socket.on('room:leave', () => void leaveRooms());
+    socket.on('room:leave', (payload, ack) =>
+      respond(ack, async () => {
+        const { roomId } = parse(roomRefSchema, payload);
+        const room = await rooms.leaveRoom(player, roomId);
+        await leaveRooms();
+        if (!room) return; // комната пуста и удалена: сообщать некому
+        io.to(roomId).emit('room:updated', room);
+        io.to(roomId).emit('chat:message', await chat.announce(roomId, player, `Игрок ${player.name} отключился`));
+      }),
+    );
+
+    socket.on('room:detach', () => void leaveRooms());
 
     socket.on('game:start', (payload, ack) =>
       respond(ack, async () => {

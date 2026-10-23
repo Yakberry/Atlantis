@@ -30,8 +30,13 @@ const send = () =>
 <template>
   <section class="panel chat">
     <ul ref="list" class="messages">
-      <li v-for="message in store.messages" :key="message.id" :class="{ mine: message.author.id === session.player?.id }">
-        <strong>{{ message.author.name }}</strong> {{ message.text }}
+      <li
+        v-for="message in store.messages"
+        :key="message.id"
+        :class="{ mine: message.author.id === session.player?.id, system: message.system }"
+      >
+        <template v-if="message.system">{{ message.text }}</template>
+        <template v-else><strong>{{ message.author.name }}</strong> {{ message.text }}</template>
       </li>
     </ul>
     <form class="row" @submit.prevent="send">
