@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import { useAction } from '../composables/useAction';
 import { useRoomStore } from '../stores/room';
+import HexBoard from './HexBoard.vue';
 
 const store = useRoomStore();
 const { error, run } = useAction();
@@ -12,6 +13,8 @@ const nameOf = (id?: string | null) => store.room?.members.find((m) => m.id === 
 
 <template>
   <section v-if="game" class="stack">
+    <HexBoard :game="game" />
+
     <template v-if="game.winnerId">
       <h2>Игра окончена</h2>
       <p>Победитель: {{ nameOf(game.winnerId) ?? 'игрок, покинувший комнату' }}</p>

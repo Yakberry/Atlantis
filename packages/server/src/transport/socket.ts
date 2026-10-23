@@ -15,6 +15,8 @@ import { AppError } from '../errors';
 import * as chat from '../modules/chat/chat.service';
 import { findPlayerByToken } from '../modules/players/player.repository';
 import * as rooms from '../modules/rooms/room.service';
+import type { RoomState } from '../modules/rooms/room.service';
+import { snapshotFor } from '../modules/rooms/room.view';
 
 type SocketData = { player: Player };
 export type AppServer = Server<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>;
@@ -33,6 +35,13 @@ async function respond<T>(ack: Ack<T>, run: () => Promise<T>): Promise<void> {
   } catch (error) {
     if (!(error instanceof AppError)) console.error(error);
     ack({ ok: false, error: error instanceof AppError ? error.message : 'Внутренняя ошибка сервера' });
+  }
+}
+
+/** Каждому подписчику комнаты уходит его собственный снимок: у игроков разный туман войны. */
+async function broadcast(io: AppServer, room: RoomState): Promise<void> {
+  for (const socket of await io.in(room.id).fetchSockets()) {
+    socket.emit('room:updated', snapshotFor(room, socket.data.player.id));
   }
 }
 
@@ -60,7 +69,7 @@ export function registerSocket(io: AppServer): void {
       respond(ack, async () => {
         const room = await rooms.createRoom(player);
         await enter(room.id);
-        return room;
+        return snapshotFor(room, player.id);
       }),
     );
 
@@ -69,9 +78,8 @@ export function registerSocket(io: AppServer): void {
         const { roomId } = parse(roomRefSchema, payload);
         const room = await rooms.joinRoom(player, roomId);
         await enter(room.id);
-        io.to(room.id).emit('room:updated', room);
-          io.to(roomId).emit('chat:message', await chat.announce(roomId, player, `Игрок ${player.name} подключился`));
-          return { room, history: await chat.getHistory(room.id) };
+        await broadcast(io, room);
+        return { room: snapshotFor(room, player.id), history: await chat.getHistory(room.id) };
       }),
     );
 
@@ -81,7 +89,7 @@ export function registerSocket(io: AppServer): void {
         const room = await rooms.leaveRoom(player, roomId);
         await leaveRooms();
         if (!room) return; // комната пуста и удалена: сообщать некому
-        io.to(roomId).emit('room:updated', room);
+        await broadcast(io, room);
         io.to(roomId).emit('chat:message', await chat.announce(roomId, player, `Игрок ${player.name} отключился`));
       }),
     );
@@ -91,14 +99,14 @@ export function registerSocket(io: AppServer): void {
     socket.on('game:start', (payload, ack) =>
       respond(ack, async () => {
         const { roomId } = parse(roomRefSchema, payload);
-        io.to(roomId).emit('room:updated', await rooms.startGame(player, roomId));
+        await broadcast(io, await rooms.startGame(player, roomId));
       }),
     );
 
     socket.on('game:action', (payload, ack) =>
       respond(ack, async () => {
         const { roomId, action } = parse(gameActionPayloadSchema, payload);
-        io.to(roomId).emit('room:updated', await rooms.performAction(player, roomId, action));
+        await broadcast(io, await rooms.performAction(player, roomId, action));
       }),
     );
 

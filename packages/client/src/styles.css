@@ -48,3 +48,16 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 
 button.secondary { background: transparent; border-color: var(--line); color: var(--text); font-weight: 400; }
 .messages li.system { color: var(--muted); font-style: italic; }
+
+.board { display: block; width: 100%; max-width: 440px; margin: 0 auto; }
+.unit { stroke: var(--bg); stroke-width: 3; }
+.tile-label {
+  fill: #fff;
+  font-size: 11px;
+  text-anchor: middle;
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.5);
+  stroke-width: 3px;
+}
+.dot { display: inline-block; width: 0.7rem; height: 0.7rem; margin-right: 0.4rem; border-radius: 50%; }

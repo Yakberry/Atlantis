@@ -7,26 +7,36 @@ import {
   MIN_PLAYERS,
   type GameAction,
   type Player,
-  type RoomSnapshot,
+  type GameState,
+  type RoomStatus,
 } from '@atlantis/shared';
 import { transaction, type Db } from '../../db/pool';
 import { AppError } from '../../errors';
 import * as repo from './room.repository';
 
+/** Полное состояние комнаты. Клиентам оно не отправляется напрямую, только через `snapshotFor`. */
+export type RoomState = {
+  id: string;
+  hostId: string;
+  status: RoomStatus;
+  members: Player[];
+  game: GameState | null;
+};
+
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const generateCode = () =>
   Array.from({ length: 5 }, () => CODE_ALPHABET[randomInt(CODE_ALPHABET.length)]).join('');
 
-export const createRoom = (player: Player): Promise<RoomSnapshot> =>
+export const createRoom = (player: Player): Promise<RoomState> =>
   transaction(async (db) => {
     const id = generateCode();
     await repo.insertRoom(db, id, player.id);
     await repo.addMember(db, id, player.id);
-    return loadSnapshot(db, id);
+    return loadRoom(db, id);
   });
 
 /** Повторный вход участника (реконнект) не меняет состав комнаты. */
-export const joinRoom = (player: Player, roomId: string): Promise<RoomSnapshot> =>
+export const joinRoom = (player: Player, roomId: string): Promise<RoomState> =>
   transaction(async (db) => {
     const room = await requireRoom(db, roomId, { lock: true });
     if (!(await repo.isMember(db, roomId, player.id))) {
@@ -34,14 +44,14 @@ export const joinRoom = (player: Player, roomId: string): Promise<RoomSnapshot> 
       if ((await repo.listMembers(db, roomId)).length >= MAX_PLAYERS) throw new AppError('Комната заполнена');
       await repo.addMember(db, roomId, player.id);
     }
-    return loadSnapshot(db, roomId);
+    return loadRoom(db, roomId);
   });
 
 /**
  * Выход насовсем. Возвращает `null`, если комната опустела и была удалена.
  * Хост уходит — роль достаётся тому, кто вошёл раньше остальных.
  */
-export const leaveRoom = (player: Player, roomId: string): Promise<RoomSnapshot | null> =>
+export const leaveRoom = (player: Player, roomId: string): Promise<RoomState | null> =>
   transaction(async (db) => {
     const room = await requireRoom(db, roomId, { lock: true });
     if (!(await repo.isMember(db, roomId, player.id))) throw new AppError('Вы не состоите в этой комнате');
@@ -59,10 +69,10 @@ export const leaveRoom = (player: Player, roomId: string): Promise<RoomSnapshot 
       game,
       status: game?.winnerId ? 'finished' : undefined,
     });
-    return loadSnapshot(db, roomId);
+    return loadRoom(db, roomId);
   });
 
-export const startGame = (player: Player, roomId: string): Promise<RoomSnapshot> =>
+export const startGame = (player: Player, roomId: string): Promise<RoomState> =>
   transaction(async (db) => {
     const room = await requireRoom(db, roomId, { lock: true });
     if (room.hostId !== player.id) throw new AppError('Начать игру может только хост');
@@ -72,10 +82,10 @@ export const startGame = (player: Player, roomId: string): Promise<RoomSnapshot>
     if (members.length < MIN_PLAYERS) throw new AppError(`Нужно минимум игроков: ${MIN_PLAYERS}`);
 
     await repo.updateRoom(db, roomId, { status: 'playing', game: createGame(members.map((m) => m.id)) });
-    return loadSnapshot(db, roomId);
+    return loadRoom(db, roomId);
   });
 
-export const performAction = (player: Player, roomId: string, action: GameAction): Promise<RoomSnapshot> =>
+export const performAction = (player: Player, roomId: string, action: GameAction): Promise<RoomState> =>
   transaction(async (db) => {
     const room = await requireRoom(db, roomId, { lock: true });
     if (room.status !== 'playing' || !room.game) throw new AppError('Игра не идёт');
@@ -87,7 +97,7 @@ export const performAction = (player: Player, roomId: string, action: GameAction
       game: result.value,
       status: result.value.winnerId ? 'finished' : undefined,
     });
-    return loadSnapshot(db, roomId);
+    return loadRoom(db, roomId);
   });
 
 async function requireRoom(db: Db, id: string, opts?: { lock?: boolean }) {
@@ -96,7 +106,7 @@ async function requireRoom(db: Db, id: string, opts?: { lock?: boolean }) {
   return room;
 }
 
-async function loadSnapshot(db: Db, id: string): Promise<RoomSnapshot> {
+async function loadRoom(db: Db, id: string): Promise<RoomState> {
   const room = await requireRoom(db, id);
   return { ...room, members: await repo.listMembers(db, id) };
 }

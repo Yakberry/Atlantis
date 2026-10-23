@@ -1,0 +1,13 @@
+/** Источник случайности (0 ≤ x < 1). Подменяется в тестах, чтобы партии были воспроизводимыми. */
+export type Rng = () => number;
+
+export const pick = <T>(items: readonly T[], rng: Rng): T => items[Math.floor(rng() * items.length)]!;
+
+export function shuffle<T>(items: readonly T[], rng: Rng): T[] {
+  const result = [...items];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [result[i], result[j]] = [result[j]!, result[i]!];
+  }
+  return result;
+}

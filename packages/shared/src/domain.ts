@@ -1,4 +1,4 @@
-import type { GameState } from './game';
+import type { GameView } from './game';
 
 export type Player = { id: string; name: string };
 export type Session = { token: string; player: Player };
@@ -10,7 +10,8 @@ export type RoomSnapshot = {
   hostId: string;
   status: RoomStatus;
   members: Player[];
-  game: GameState | null;
+  /** Состояние партии глазами получателя (с учётом тумана войны). */
+  game: GameView | null;
 };
 
 export type ChatMessage = {
