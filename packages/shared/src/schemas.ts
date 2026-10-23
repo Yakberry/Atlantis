@@ -6,7 +6,10 @@ export const playerNameSchema = z.string().trim().min(2).max(24);
 export const roomIdSchema = z.string().trim().toUpperCase().regex(/^[A-HJ-NP-Z2-9]{5}$/);
 export const chatTextSchema = z.string().trim().min(1).max(500);
 
+const coordSchema = z.object({ q: z.number().int(), r: z.number().int() });
+
 export const gameActionSchema: z.ZodType<GameAction> = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('move'), unitId: z.string().max(64), to: coordSchema }),
   z.object({ type: z.literal('end_turn') }),
 ]);
 

@@ -11,7 +11,7 @@ export const useRoomStore = defineStore('room', () => {
   let socket: AppSocket | null = null;
 
   const isHost = computed(() => room.value?.hostId === sessionStore.player?.id);
-  const isMyTurn = computed(() => room.value?.game?.activePlayerId === sessionStore.player?.id);
+  const isReady = computed(() => room.value?.game?.ready.includes(sessionStore.player?.id ?? '') ?? false);
   const canStart = computed(() => (room.value?.members.length ?? 0) >= MIN_PLAYERS);
 
   function connect(): AppSocket {
@@ -73,7 +73,7 @@ export const useRoomStore = defineStore('room', () => {
     unwrap(await connect().emitWithAck('chat:send', { roomId: currentRoomId(), text }));
 
   return {
-    room, messages, isHost, isMyTurn, canStart,
+    room, messages, isHost, isReady, canStart,
     createRoom, join, leave, detach, startGame, sendAction, sendMessage,
   };
 });

@@ -9,10 +9,13 @@ const colorOf = (playerId: string) => playerColor(props.room.game?.slots[playerI
 
 <template>
   <ul class="players">
-    <li v-for="member in room.members" :key="member.id" :class="{ active: member.id === room.game?.activePlayerId }">
+    <li v-for="member in room.members" :key="member.id">
       <span v-if="room.game" class="dot" :style="{ background: colorOf(member.id) }" />
       {{ member.name }}
       <span v-if="member.id === room.hostId" class="muted">хост</span>
+      <span v-if="room.game && !room.game.winnerId && room.game.ready.includes(member.id)" class="muted">
+        ход завершён
+      </span>
     </li>
   </ul>
 </template>

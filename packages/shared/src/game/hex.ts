@@ -14,3 +14,5 @@ export function createBoard(radius: number): Coord[] {
   }
   return cells;
 }
+
+export const sameCell = (a: Coord, b: Coord): boolean => a.q === b.q && a.r === b.r;

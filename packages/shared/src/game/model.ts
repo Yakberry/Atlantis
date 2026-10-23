@@ -13,16 +13,34 @@ export const RESOURCES = ['food', 'wood', 'iron', 'gold'] as const;
 export type Resource = (typeof RESOURCES)[number];
 
 export type Hex = Coord & { resource: Resource };
-export type Unit = Coord & { id: string; ownerId: string };
-export type UnitView = Pick<Unit, 'id' | 'ownerId'>;
 
-/** Полное состояние партии. Живёт только на сервере (и в БД): клиенту уходит `GameView`. */
+export type Unit = Coord & {
+  id: string;
+  ownerId: string;
+  /** Уже ходил в этом ходу; сбрасывается, когда ход раскрывается. */
+  tired: boolean;
+  /** Где юнита видят противники: обновляется только при раскрытии хода. */
+  revealed: Coord;
+};
+
+export type UnitView = {
+  id: string;
+  ownerId: string;
+  /** Известно только владельцу юнита. */
+  tired?: boolean;
+};
+
+/**
+ * Полное состояние партии. Живёт только на сервере (и в БД): клиенту уходит `GameView`.
+ * Ход общий: все игроки действуют одновременно, а когда все завершили ход, он раскрывается.
+ */
 export type GameState = {
   playerOrder: string[];
   /** Номер цвета игрока (индекс в палитре клиента). Не меняется, даже если кто-то вышел. */
   slots: Record<string, number>;
   turn: number;
-  activePlayerId: string;
+  /** Игроки, уже завершившие текущий ход. */
+  ready: string[];
   winnerId: string | null;
   hexes: Hex[];
   units: Unit[];
@@ -43,6 +61,8 @@ export type HexView =
 /** Состояние партии глазами одного игрока: без чужих тайн. */
 export type GameView = Omit<GameState, 'hexes' | 'units'> & { hexes: HexView[] };
 
-export type GameAction = { type: 'end_turn' };
+export type GameAction =
+  | { type: 'move'; unitId: string; to: Coord }
+  | { type: 'end_turn' };
 
 export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
