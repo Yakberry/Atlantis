@@ -21,3 +21,7 @@ export const FOG_FILL = '#2b383d';
 export const FOG_STROKE = '#36454b';
 export const FREE_STROKE = 'rgba(255, 255, 255, 0.18)';
 export const CONTESTED_STROKE = '#ffffff';
+
+/** Локация видна, но её тип ещё никто не изведал. Светлее «тумана», чтобы их не путать. */
+export const UNKNOWN_FILL = '#566b71';
+export const UNKNOWN_LABEL = 'Неизведано';

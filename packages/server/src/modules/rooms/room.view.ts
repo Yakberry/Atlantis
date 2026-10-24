@@ -6,6 +6,7 @@ export const snapshotFor = (room: RoomState, viewerId: string): RoomSnapshot => 
   id: room.id,
   hostId: room.hostId,
   status: room.status,
+  settings: room.settings,
   members: room.members,
   game: room.game ? viewFor(room.game, viewerId) : null,
 });

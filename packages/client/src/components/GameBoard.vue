@@ -24,20 +24,23 @@ const endTurn = () => run(() => store.sendAction({ type: 'end_turn' }));
 </script>
 
 <template>
-  <section v-if="game" class="stack">
+  <section v-if="game" class="game">
     <HexBoard :game="game" :viewer-id="session.player?.id ?? ''" @move="move" />
 
-    <template v-if="game.winnerId">
-      <h2>Игра окончена</h2>
-      <p>Победитель: {{ nameOf(game.winnerId) ?? 'игрок, покинувший комнату' }}</p>
-    </template>
+    <div class="turnbar">
+      <template v-if="game.winnerId">
+        <strong>Игра окончена</strong>
+        <span class="hint">Победитель: {{ nameOf(game.winnerId) ?? 'игрок, покинувший комнату' }}</span>
+      </template>
 
-    <template v-else>
-      <h2>Ход {{ game.turn }}</h2>
-      <p v-if="store.isReady" class="muted">Ход завершён. Ждём: {{ waitingFor }}</p>
-      <p v-else class="muted">Выберите юнита, затем соседнюю локацию. Когда закончите, завершите ход.</p>
-      <button :disabled="store.isReady" @click="endTurn">Завершить ход</button>
-    </template>
+      <template v-else>
+        <strong>Ход {{ game.turn }}</strong>
+        <span class="hint muted">
+          {{ store.isReady ? `Ход завершён. Ждём: ${waitingFor}` : 'Выберите подсвеченного юнита, затем соседнюю локацию.' }}
+        </span>
+        <button :disabled="store.isReady" @click="endTurn">Завершить ход</button>
+      </template>
+    </div>
 
     <p v-if="error" class="error">{{ error }}</p>
   </section>

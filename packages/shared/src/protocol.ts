@@ -1,11 +1,12 @@
 import type { z } from 'zod';
 import type { ChatMessage, RoomSnapshot } from './domain';
-import type { chatSendSchema, gameActionPayloadSchema, roomRefSchema } from './schemas';
+import type { chatSendSchema, configureRoomSchema, gameActionPayloadSchema, roomRefSchema } from './schemas';
 
 export type AckResult<T> = { ok: true; data: T } | { ok: false; error: string };
 export type Ack<T> = (result: AckResult<T>) => void;
 
 type RoomRef = z.input<typeof roomRefSchema>;
+type ConfigureRoomPayload = z.input<typeof configureRoomSchema>;
 type GameActionPayload = z.input<typeof gameActionPayloadSchema>;
 type ChatSendPayload = z.input<typeof chatSendSchema>;
 
@@ -16,6 +17,8 @@ export interface ClientToServerEvents {
   'room:leave': (payload: RoomRef, ack: Ack<void>) => void;
   /** Закрыли экран комнаты, но остались участником: перестать получать её события. */
   'room:detach': () => void;
+  /** Настройки лобби (только хост, только до старта игры). */
+  'room:configure': (payload: ConfigureRoomPayload, ack: Ack<void>) => void;
   'game:start': (payload: RoomRef, ack: Ack<void>) => void;
   'game:action': (payload: GameActionPayload, ack: Ack<void>) => void;
   'chat:send': (payload: ChatSendPayload, ack: Ack<void>) => void;

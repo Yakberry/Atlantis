@@ -25,32 +25,57 @@ input, button {
 }
 button { cursor: pointer; background: var(--accent); border-color: var(--accent); color: #2b1d05; font-weight: 600; }
 button:disabled { opacity: 0.4; cursor: not-allowed; }
+button.secondary { background: transparent; border-color: var(--line); color: var(--text); font-weight: 400; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+/* ---------- Общие блоки ---------- */
 .page { max-width: 960px; margin: 0 auto; padding: 2rem 1rem; display: grid; gap: 1rem; }
 .panel { background: var(--panel); border-radius: 8px; padding: 1.25rem; }
 .stack { display: grid; gap: 0.75rem; align-content: start; }
 .row { display: flex; gap: 0.5rem; }
 .row input { flex: 1; min-width: 0; }
+.field { display: grid; gap: 0.25rem; }
 .muted { color: var(--muted); }
 .error { color: var(--danger); margin: 0; }
+.dot { display: inline-block; width: 0.7rem; height: 0.7rem; margin-right: 0.4rem; border-radius: 50%; }
 
-.room { display: grid; grid-template-columns: 1fr 320px; gap: 1rem; }
-@media (max-width: 720px) { .room { grid-template-columns: 1fr; } }
+/* ---------- Экран комнаты: на всю ширину и ровно в высоту окна ---------- */
+.page.wide {
+  display: flex;
+  flex-direction: column;
+  max-width: none;
+  height: 100vh;
+  height: 100dvh;
+  margin: 0;
+  padding: 1rem;
+}
+.room { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 1rem; }
+.room > * { min-height: 0; }
 
-.players { list-style: none; margin: 0; padding: 0; }
-.players li.active { color: var(--accent); font-weight: 600; }
+.stage { display: flex; flex-direction: column; gap: 0.75rem; }
+.stage-header { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1.5rem; }
+.stage-header h1 { font-size: 1.4rem; }
+.players { flex: 1; display: flex; flex-wrap: wrap; gap: 0.25rem 1.25rem; list-style: none; margin: 0; padding: 0; }
 
-.chat { display: flex; flex-direction: column; gap: 0.5rem; height: 70vh; }
-.messages { flex: 1; overflow-y: auto; list-style: none; margin: 0; padding: 0; }
-.messages li { padding: 0.15rem 0; overflow-wrap: anywhere; }
-.messages li.mine strong { color: var(--accent); }
+.game { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 0.75rem; }
+.turnbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; }
+.turnbar .hint { flex: 1; }
 
-button.secondary { background: transparent; border-color: var(--line); color: var(--text); font-weight: 400; }
-.messages li.system { color: var(--muted); font-style: italic; }
+/* ---------- Карта ---------- */
+.viewport {
+  position: relative;
+  flex: 1;
+  min-height: 240px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.18);
+}
+.board { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; user-select: none; }
+.board:active { cursor: grabbing; }
+.board g.target { cursor: pointer; }
+.viewport-controls { position: absolute; top: 0.5rem; right: 0.5rem; display: grid; gap: 0.35rem; }
+.viewport-controls button { width: 2.2rem; padding: 0.25rem 0; line-height: 1.2; }
 
-.board { display: block; width: 100%; max-width: 440px; margin: 0 auto; }
-.unit { stroke: var(--bg); stroke-width: 3; }
 .tile-label {
   fill: #fff;
   font-size: 11px;
@@ -60,10 +85,28 @@ button.secondary { background: transparent; border-color: var(--line); color: va
   stroke: rgba(0, 0, 0, 0.5);
   stroke-width: 3px;
 }
-.dot { display: inline-block; width: 0.7rem; height: 0.7rem; margin-right: 0.4rem; border-radius: 50%; }
-
-.board g.target { cursor: pointer; }
 .target-overlay { fill: rgba(255, 255, 255, 0.16); stroke: #fff; stroke-width: 2; pointer-events: none; }
+
+.unit { stroke: var(--bg); stroke-width: 3; }
 .unit.selectable { cursor: pointer; }
 .unit.selected { stroke: #fff; stroke-width: 4; }
 .unit.tired { opacity: 0.4; }
+
+/* Мягкая подсветка своих юнитов, которые ещё не ходили. */
+.halo { fill: none; stroke: #fff; stroke-width: 2.5; pointer-events: none; animation: halo-pulse 1.8s ease-in-out infinite; }
+@keyframes halo-pulse {
+  0%, 100% { stroke-opacity: 0.25; }
+  50% { stroke-opacity: 0.8; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .halo { animation: none; stroke-opacity: 0.6; }
+}
+
+/* ---------- Чат ---------- */
+.chat { display: flex; flex-direction: column; gap: 0.5rem; }
+.messages { flex: 1; min-height: 0; overflow-y: auto; list-style: none; margin: 0; padding: 0; }
+.messages li { padding: 0.15rem 0; overflow-wrap: anywhere; }
+.messages li.mine strong { color: var(--accent); }
+.messages li.system { color: var(--muted); font-style: italic; }
+
+.unit.colony { stroke-linejoin: round; }

@@ -1,5 +1,5 @@
 import { distance, sameCell, type Coord } from './hex';
-import { VISION_RANGE, type GameState, type GameView, type Unit, type UnitView } from './model';
+import { UNIT_KINDS, type GameState, type GameView, type Hex, type Unit, type UnitView } from './model';
 
 /**
  * Где игрок «знает» юнита: свои — там, где они стоят сейчас (приказ действует мгновенно),
@@ -9,24 +9,31 @@ const knownPosition = (unit: Unit, viewerId: string): Coord => (unit.ownerId ===
 
 const toUnitView = (unit: Unit, viewerId: string): UnitView =>
   unit.ownerId === viewerId
-    ? { id: unit.id, ownerId: unit.ownerId, tired: unit.tired }
-    : { id: unit.id, ownerId: unit.ownerId };
+    ? { id: unit.id, ownerId: unit.ownerId, kind: unit.kind, tired: unit.tired }
+    : { id: unit.id, ownerId: unit.ownerId, kind: unit.kind };
 
 /**
  * Проекция состояния для одного игрока («туман войны»).
- * Локацию видит тот, у кого в ней или рядом с ней стоит юнит. Про невидимые локации сервер
- * не отправляет ничего, кроме координат, а чужие перемещения — только после раскрытия хода,
- * поэтому подсмотреть их на клиенте нельзя.
+ *
+ * - Локацию видит тот, у кого достаточно близко стоит юнит или постройка (дальность зависит от вида).
+ *   Про невидимые локации сервер не отправляет ничего, кроме координат.
+ * - Тип видимой локации известен, если в ней кто-то побывал к последнему раскрытию хода
+ *   либо если в ней сейчас стоит свой юнит. Чужие посещения до раскрытия хода не влияют на вид,
+ *   иначе по внезапно открывшемуся ресурсу можно было бы вычислить чужой ход.
+ * - Чужие юниты видны там, где их показали при последнем раскрытии хода.
  */
 export function viewFor(state: GameState, viewerId: string): GameView {
   const { hexes, units, ...rest } = state;
   const eyes = units.filter((unit) => unit.ownerId === viewerId);
 
+  const sees = (hex: Hex) => eyes.some((eye) => distance(eye, hex) <= UNIT_KINDS[eye.kind].vision);
+  const knowsResource = (hex: Hex) => hex.discovered || eyes.some((eye) => sameCell(eye, hex));
+
   return {
     ...rest,
     hexes: hexes.map((hex) => {
       const { q, r } = hex;
-      if (!eyes.some((eye) => distance(eye, hex) <= VISION_RANGE)) return { q, r, visible: false };
+      if (!sees(hex)) return { q, r, visible: false };
 
       const here = units.filter((unit) => sameCell(knownPosition(unit, viewerId), hex));
       const owners = new Set(here.map((unit) => unit.ownerId));
@@ -34,7 +41,7 @@ export function viewFor(state: GameState, viewerId: string): GameView {
         q,
         r,
         visible: true,
-        resource: hex.resource,
+        resource: knowsResource(hex) ? hex.resource : null,
         ownerId: owners.size === 1 ? ([...owners][0] ?? null) : null,
         contested: owners.size > 1,
         units: here.map((unit) => toUnitView(unit, viewerId)),

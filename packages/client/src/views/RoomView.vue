@@ -3,6 +3,7 @@ import { onBeforeUnmount, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import ChatPanel from '../components/ChatPanel.vue';
 import GameBoard from '../components/GameBoard.vue';
+import LobbySettings from '../components/LobbySettings.vue';
 import PlayerList from '../components/PlayerList.vue';
 import { useAction } from '../composables/useAction';
 import { useRoomStore } from '../stores/room';
@@ -24,25 +25,28 @@ onBeforeUnmount(() => store.detach());
 </script>
 
 <template>
-  <main class="page">
+  <main class="page wide">
     <p v-if="joinError" class="error">{{ joinError }} <RouterLink to="/">В лобби</RouterLink></p>
 
     <div v-else-if="store.room" class="room">
-      <section class="panel stack">
-        <h1>Комната {{ store.room.id }}</h1>
-        <PlayerList :room="store.room" />
+      <section class="panel stage">
+        <header class="stage-header">
+          <h1>Комната {{ store.room.id }}</h1>
+          <PlayerList :room="store.room" />
+          <button class="secondary" @click="run(leaveRoom)">Выйти из комнаты</button>
+        </header>
 
-        <template v-if="store.room.status === 'lobby'">
+        <div v-if="store.room.status === 'lobby'" class="stack">
           <p class="muted">Ссылка для друзей: {{ link }}</p>
+          <LobbySettings />
           <button v-if="store.isHost" :disabled="!store.canStart" @click="run(store.startGame)">
             Начать игру
           </button>
           <p v-else class="muted">Ждём, пока хост начнёт игру.</p>
-        </template>
+        </div>
         <GameBoard v-else />
 
         <p v-if="actionError" class="error">{{ actionError }}</p>
-        <button class="secondary" @click="run(leaveRoom)">Выйти из комнаты</button>
       </section>
 
       <ChatPanel />

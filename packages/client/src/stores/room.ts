@@ -63,6 +63,9 @@ export const useRoomStore = defineStore('room', () => {
     reset();
   }
 
+  const setMapSize = async (mapSize: number) =>
+    unwrap(await connect().emitWithAck('room:configure', { roomId: currentRoomId(), mapSize }));
+
   const startGame = async () =>
     unwrap(await connect().emitWithAck('game:start', { roomId: currentRoomId() }));
 
@@ -74,6 +77,6 @@ export const useRoomStore = defineStore('room', () => {
 
   return {
     room, messages, isHost, isReady, canStart,
-    createRoom, join, leave, detach, startGame, sendAction, sendMessage,
+    createRoom, join, leave, detach, setMapSize, startGame, sendAction, sendMessage,
   };
 });

@@ -1,5 +1,6 @@
 import {
   chatSendSchema,
+  configureRoomSchema,
   gameActionPayloadSchema,
   roomRefSchema,
   tokenSchema,
@@ -91,6 +92,13 @@ export function registerSocket(io: AppServer): void {
         if (!room) return; // комната пуста и удалена: сообщать некому
         await broadcast(io, room);
         io.to(roomId).emit('chat:message', await chat.announce(roomId, player, `Игрок ${player.name} отключился`));
+      }),
+    );
+
+    socket.on('room:configure', (payload, ack) =>
+      respond(ack, async () => {
+        const { roomId, mapSize } = parse(configureRoomSchema, payload);
+        await broadcast(io, await rooms.configureRoom(player, roomId, { mapSize }));
       }),
     );
 

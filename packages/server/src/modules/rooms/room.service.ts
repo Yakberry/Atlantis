@@ -8,6 +8,7 @@ import {
   type GameAction,
   type Player,
   type GameState,
+  type RoomSettings,
   type RoomStatus,
 } from '@atlantis/shared';
 import { transaction, type Db } from '../../db/pool';
@@ -19,6 +20,7 @@ export type RoomState = {
   id: string;
   hostId: string;
   status: RoomStatus;
+  settings: RoomSettings;
   members: Player[];
   game: GameState | null;
 };
@@ -72,6 +74,16 @@ export const leaveRoom = (player: Player, roomId: string): Promise<RoomState | n
     return loadRoom(db, roomId);
   });
 
+export const configureRoom = (player: Player, roomId: string, settings: RoomSettings): Promise<RoomState> =>
+  transaction(async (db) => {
+    const room = await requireRoom(db, roomId, { lock: true });
+    if (room.hostId !== player.id) throw new AppError('Настройки меняет только хост');
+    if (room.status !== 'lobby') throw new AppError('Нельзя менять настройки после старта игры');
+
+    await repo.updateRoom(db, roomId, { mapSize: settings.mapSize });
+    return loadRoom(db, roomId);
+  });
+
 export const startGame = (player: Player, roomId: string): Promise<RoomState> =>
   transaction(async (db) => {
     const room = await requireRoom(db, roomId, { lock: true });
@@ -81,7 +93,7 @@ export const startGame = (player: Player, roomId: string): Promise<RoomState> =>
     const members = await repo.listMembers(db, roomId);
     if (members.length < MIN_PLAYERS) throw new AppError(`Нужно минимум игроков: ${MIN_PLAYERS}`);
 
-    await repo.updateRoom(db, roomId, { status: 'playing', game: createGame(members.map((m) => m.id)) });
+    await repo.updateRoom(db, roomId, { status: 'playing', game: createGame(members.map((m) => m.id), room.mapSize) });
     return loadRoom(db, roomId);
   });
 
@@ -107,6 +119,6 @@ async function requireRoom(db: Db, id: string, opts?: { lock?: boolean }) {
 }
 
 async function loadRoom(db: Db, id: string): Promise<RoomState> {
-  const room = await requireRoom(db, id);
-  return { ...room, members: await repo.listMembers(db, id) };
+  const { mapSize, ...room } = await requireRoom(db, id);
+  return { ...room, settings: { mapSize }, members: await repo.listMembers(db, id) };
 }

@@ -5,10 +5,13 @@ export type Session = { token: string; player: Player };
 
 export type RoomStatus = 'lobby' | 'playing' | 'finished';
 
+export type RoomSettings = { mapSize: number };
+
 export type RoomSnapshot = {
   id: string;
   hostId: string;
   status: RoomStatus;
+  settings: RoomSettings;
   members: Player[];
   /** Состояние партии глазами получателя (с учётом тумана войны). */
   game: GameView | null;

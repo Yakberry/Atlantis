@@ -11,3 +11,13 @@ export function shuffle<T>(items: readonly T[], rng: Rng): T[] {
   }
   return result;
 }
+
+export function pickWeighted<T>(items: readonly T[], weight: (item: T) => number, rng: Rng): T {
+  const total = items.reduce((sum, item) => sum + weight(item), 0);
+  let roll = rng() * total;
+  for (const item of items) {
+    roll -= weight(item);
+    if (roll < 0) return item;
+  }
+  return items[items.length - 1]!;
+}

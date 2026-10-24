@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { GameAction } from './game';
+import { MAX_MAP_SIZE, MIN_MAP_SIZE, type GameAction } from './game';
 
 export const tokenSchema = z.string().uuid();
 export const playerNameSchema = z.string().trim().min(2).max(24);
@@ -13,7 +13,10 @@ export const gameActionSchema: z.ZodType<GameAction> = z.discriminatedUnion('typ
   z.object({ type: z.literal('end_turn') }),
 ]);
 
+export const mapSizeSchema = z.number().int().min(MIN_MAP_SIZE).max(MAX_MAP_SIZE);
+
 export const createSessionSchema = z.object({ name: playerNameSchema });
 export const roomRefSchema = z.object({ roomId: roomIdSchema });
+export const configureRoomSchema = roomRefSchema.extend({ mapSize: mapSizeSchema });
 export const gameActionPayloadSchema = roomRefSchema.extend({ action: gameActionSchema });
 export const chatSendSchema = roomRefSchema.extend({ text: chatTextSchema });

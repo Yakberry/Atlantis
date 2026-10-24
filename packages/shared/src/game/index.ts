@@ -1,3 +1,4 @@
+export * from './board';
 export * from './hex';
 export * from './model';
 export * from './rules';

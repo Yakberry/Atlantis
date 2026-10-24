@@ -1,22 +1,38 @@
 import type { Coord } from './hex';
 
-export const MIN_PLAYERS = 2;
+export const MIN_PLAYERS = 1;
 export const MAX_PLAYERS = 4;
-/** Радиус карты: 1 — центральная локация и шесть соседних. */
-export const BOARD_RADIUS = 1;
-/** Дальность обзора юнита: 1 — его локация и соседние. */
-export const VISION_RANGE = 1;
+export const MIN_MAP_SIZE = 5;
+export const MAX_MAP_SIZE = 25;
+export const DEFAULT_MAP_SIZE = 7;
+/** Подвижных юнитов у каждого игрока на старте (помимо колонии). */
+export const STARTING_UNITS = 2;
 /** Заглушка условия победы: когда счётчик ходов доходит до этого значения, игра заканчивается. */
 export const WIN_TURN = 3;
+
+/**
+ * Виды сущностей на карте. Все они — «юниты» в широком смысле (принадлежат игроку, стоят в локации,
+ * видят вокруг себя, участвуют в споре за локацию), но постройки не двигаются и видят на 1 локацию ближе.
+ */
+export const UNIT_KINDS = {
+  unit: { vision: 2, mobile: true },
+  colony: { vision: 1, mobile: false },
+} as const;
+export type UnitKind = keyof typeof UNIT_KINDS;
 
 export const RESOURCES = ['food', 'wood', 'iron', 'gold'] as const;
 export type Resource = (typeof RESOURCES)[number];
 
-export type Hex = Coord & { resource: Resource };
+export type Hex = Coord & {
+  resource: Resource;
+  /** Хоть один юнит побывал здесь к последнему раскрытию хода: тип локации известен всем, кто её видит. */
+  discovered: boolean;
+};
 
 export type Unit = Coord & {
   id: string;
   ownerId: string;
+  kind: UnitKind;
   /** Уже ходил в этом ходу; сбрасывается, когда ход раскрывается. */
   tired: boolean;
   /** Где юнита видят противники: обновляется только при раскрытии хода. */
@@ -26,6 +42,7 @@ export type Unit = Coord & {
 export type UnitView = {
   id: string;
   ownerId: string;
+  kind: UnitKind;
   /** Известно только владельцу юнита. */
   tired?: boolean;
 };
@@ -51,7 +68,8 @@ export type HexView =
   | (Coord & { visible: false })
   | (Coord & {
       visible: true;
-      resource: Resource;
+      /** `null` — локацию видно, но тип ещё не изведан ни одним юнитом. */
+      resource: Resource | null;
       /** Единственный игрок, чьи юниты в локации; `null`, если она пуста или спорная. */
       ownerId: string | null;
       contested: boolean;

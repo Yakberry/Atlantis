@@ -1,7 +1,7 @@
 import type { GameState, Player, RoomStatus } from '@atlantis/shared';
 import type { Db } from '../../db/pool';
 
-export type RoomRow = { id: string; hostId: string; status: RoomStatus; game: GameState | null };
+export type RoomRow = { id: string; hostId: string; status: RoomStatus; mapSize: number; game: GameState | null };
 
 export async function insertRoom(db: Db, id: string, hostId: string): Promise<void> {
   await db.query('insert into rooms (id, host_id) values ($1, $2)', [id, hostId]);
@@ -10,7 +10,7 @@ export async function insertRoom(db: Db, id: string, hostId: string): Promise<vo
 /** `lock` блокирует строку до конца транзакции: ходы в одной комнате выполняются строго по очереди. */
 export async function findRoom(db: Db, id: string, { lock = false } = {}): Promise<RoomRow | null> {
   const { rows } = await db.query<RoomRow>(
-    `select id, host_id as "hostId", status, game from rooms where id = $1 ${lock ? 'for update' : ''}`,
+    `select id, host_id as "hostId", status, map_size as "mapSize", game from rooms where id = $1 ${lock ? 'for update' : ''}`,
     [id],
   );
   return rows[0] ?? null;
@@ -20,15 +20,16 @@ export async function findRoom(db: Db, id: string, { lock = false } = {}): Promi
 export async function updateRoom(
   db: Db,
   id: string,
-  patch: { status?: RoomStatus; hostId?: string; game?: GameState },
+  patch: { status?: RoomStatus; hostId?: string; mapSize?: number; game?: GameState },
 ): Promise<void> {
   await db.query(
     `update rooms
         set status  = coalesce($2, status),
             host_id = coalesce($3, host_id),
-            game    = coalesce($4, game)
+            map_size = coalesce($4, map_size),
+            game    = coalesce($5, game)
       where id = $1`,
-    [id, patch.status ?? null, patch.hostId ?? null, patch.game ? JSON.stringify(patch.game) : null],
+    [id, patch.status ?? null, patch.hostId ?? null, patch.mapSize ?? null, patch.game ? JSON.stringify(patch.game) : null],
   );
 }
 
