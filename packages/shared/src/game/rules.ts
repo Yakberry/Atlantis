@@ -1,11 +1,16 @@
 import { generateBoard } from './board';
 import { distance, sameCell, type Coord } from './hex';
 import {
+  emptyStock,
+  HARVEST_MAX,
+  HARVEST_MIN,
   RESOURCES,
   STARTING_UNITS,
   UNIT_KINDS,
   WIN_TURN,
+  type Applied,
   type GameAction,
+  type GameEvent,
   type GameState,
   type Hex,
   type Result,
@@ -14,8 +19,8 @@ import {
 } from './model';
 import { pick, shuffle, type Rng } from './random';
 
-const ok = (value: GameState): Result<GameState> => ({ ok: true, value });
-const fail = (error: string): Result<GameState> => ({ ok: false, error });
+const ok = (state: GameState, events: GameEvent[] = []): Result<Applied> => ({ ok: true, value: { state, events } });
+const fail = (error: string): Result<Applied> => ({ ok: false, error });
 
 export function createGame(playerIds: string[], mapSize: number, rng: Rng = Math.random): GameState {
   if (playerIds.length === 0) throw new Error('Нужен хотя бы один игрок');
@@ -50,13 +55,20 @@ export function createGame(playerIds: string[], mapSize: number, rng: Rng = Math
     slots: Object.fromEntries(playerIds.map((id, i) => [id, i])),
     turn: 1,
     ready: [],
+    stock: Object.fromEntries(playerIds.map((id) => [id, emptyStock()])),
     winnerId: null,
     hexes: markDiscovered(board, units),
     units,
   };
 }
 
-export function applyAction(state: GameState, playerId: string, action: GameAction): Result<GameState> {
+/** `rng` нужен действиям со случайным исходом (добыча); по умолчанию — `Math.random`. */
+export function applyAction(
+  state: GameState,
+  playerId: string,
+  action: GameAction,
+  rng: Rng = Math.random,
+): Result<Applied> {
   if (state.winnerId) return fail('Игра уже окончена');
   if (!state.playerOrder.includes(playerId)) return fail('Вы не участвуете в игре');
   if (state.ready.includes(playerId)) return fail('Вы уже завершили ход');
@@ -64,12 +76,14 @@ export function applyAction(state: GameState, playerId: string, action: GameActi
   switch (action.type) {
     case 'move':
       return moveUnit(state, playerId, action.unitId, action.to);
+    case 'harvest':
+      return harvest(state, playerId, action.colonyId, rng);
     case 'end_turn':
       return ok(revealIfAllReady({ ...state, ready: [...state.ready, playerId] }));
   }
 }
 
-/** Игрок вышел посреди партии: его юниты и постройки исчезают, последний оставшийся побеждает. */
+/** Игрок вышел посреди партии: его юниты, постройки и запасы исчезают, последний оставшийся побеждает. */
 export function removePlayer(state: GameState, playerId: string): GameState {
   if (state.winnerId || !state.playerOrder.includes(playerId)) return state;
 
@@ -78,6 +92,7 @@ export function removePlayer(state: GameState, playerId: string): GameState {
     ...state,
     playerOrder,
     ready: state.ready.filter((id) => id !== playerId),
+    stock: Object.fromEntries(Object.entries(state.stock).filter(([id]) => id !== playerId)),
     units: state.units.filter((unit) => unit.ownerId !== playerId),
   };
 
@@ -87,7 +102,7 @@ export function removePlayer(state: GameState, playerId: string): GameState {
 }
 
 /** Юнит переходит в соседнюю локацию сразу (для его владельца), противники узнают об этом при раскрытии хода. */
-function moveUnit(state: GameState, playerId: string, unitId: string, to: Coord): Result<GameState> {
+function moveUnit(state: GameState, playerId: string, unitId: string, to: Coord): Result<Applied> {
   const unit = state.units.find((u) => u.id === unitId && u.ownerId === playerId);
   if (!unit) return fail('Это не ваш юнит');
   if (!UNIT_KINDS[unit.kind].mobile) return fail('Постройки не умеют двигаться');
@@ -101,8 +116,31 @@ function moveUnit(state: GameState, playerId: string, unitId: string, to: Coord)
   });
 }
 
+/** Колония раз в ход приносит от HARVEST_MIN до HARVEST_MAX единиц ресурса своей локации. */
+function harvest(state: GameState, playerId: string, colonyId: string, rng: Rng): Result<Applied> {
+  const colony = state.units.find((u) => u.id === colonyId && u.ownerId === playerId);
+  if (!colony) return fail('Это не ваша постройка');
+  if (!UNIT_KINDS[colony.kind].harvests) return fail('Эта сущность ничего не добывает');
+  if (colony.tired) return fail('Колония уже добывала в этом ходу');
+
+  const hex = state.hexes.find((h) => sameCell(h, colony));
+  if (!hex) return fail('Колония стоит вне карты');
+
+  const amount = HARVEST_MIN + Math.floor(rng() * (HARVEST_MAX - HARVEST_MIN + 1));
+  const mine = state.stock[playerId] ?? emptyStock();
+
+  return ok(
+    {
+      ...state,
+      stock: { ...state.stock, [playerId]: { ...mine, [hex.resource]: mine[hex.resource] + amount } },
+      units: state.units.map((u) => (u.id === colony.id ? { ...u, tired: true } : u)),
+    },
+    [{ type: 'harvested', unitId: colony.id, resource: hex.resource, amount }],
+  );
+}
+
 /**
- * Когда все игроки завершили ход: перемещения становятся известны всем, юниты отдыхают,
+ * Когда все игроки завершили ход: перемещения становятся известны всем, юниты и колонии отдыхают,
  * локации, где кто-то побывал, считаются изведанными, начинается новый ход.
  */
 function revealIfAllReady(state: GameState): GameState {

@@ -3,8 +3,10 @@ import { onBeforeUnmount, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import ChatPanel from '../components/ChatPanel.vue';
 import GameBoard from '../components/GameBoard.vue';
+import GraphicsToggle from '../components/GraphicsToggle.vue';
 import LobbySettings from '../components/LobbySettings.vue';
 import PlayerList from '../components/PlayerList.vue';
+import ResourceBar from '../components/ResourceBar.vue';
 import { useAction } from '../composables/useAction';
 import { useRoomStore } from '../stores/room';
 
@@ -33,8 +35,13 @@ onBeforeUnmount(() => store.detach());
         <header class="stage-header">
           <h1>Комната {{ store.room.id }}</h1>
           <PlayerList :room="store.room" />
-          <button class="secondary" @click="run(leaveRoom)">Выйти из комнаты</button>
+          <div class="stage-actions">
+            <button class="secondary" @click="run(leaveRoom)">Выйти из комнаты</button>
+            <GraphicsToggle />
+          </div>
         </header>
+
+        <ResourceBar v-if="store.room.game" :stock="store.room.game.stock" />
 
         <div v-if="store.room.status === 'lobby'" class="stack">
           <p class="muted">Ссылка для друзей: {{ link }}</p>

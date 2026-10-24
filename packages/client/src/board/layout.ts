@@ -43,3 +43,11 @@ export function unitSlot(index: number, count: number): { x: number; y: number }
   const inRow = Math.min(perRow, count - row * perRow);
   return { x: ((index % perRow) - (inRow - 1) / 2) * 26, y: -8 + (row - (rows - 1) / 2) * 24 };
 }
+
+/** Куда класть картинку локации: она вписана в тот же гекс, что и заливка. */
+export const HEX_IMAGE = {
+  x: -(SQRT3 * (HEX_SIZE - GAP)) / 2,
+  y: -(HEX_SIZE - GAP),
+  width: SQRT3 * (HEX_SIZE - GAP),
+  height: 2 * (HEX_SIZE - GAP),
+};

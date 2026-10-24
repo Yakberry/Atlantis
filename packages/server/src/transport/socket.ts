@@ -114,7 +114,9 @@ export function registerSocket(io: AppServer): void {
     socket.on('game:action', (payload, ack) =>
       respond(ack, async () => {
         const { roomId, action } = parse(gameActionPayloadSchema, payload);
-        await broadcast(io, await rooms.performAction(player, roomId, action));
+        const { room, events } = await rooms.performAction(player, roomId, action);
+        await broadcast(io, room);
+        return events;
       }),
     );
 

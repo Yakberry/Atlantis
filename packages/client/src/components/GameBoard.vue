@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import type { Coord } from '@atlantis/shared';
-import { computed } from 'vue';
+import type { Coord, GameEvent } from '@atlantis/shared';
+import { computed, ref } from 'vue';
+import { POPUP_MS, type Popup } from '../board/popups';
 import { useAction } from '../composables/useAction';
 import { useRoomStore } from '../stores/room';
 import { useSessionStore } from '../stores/session';
@@ -19,13 +20,32 @@ const waitingFor = computed(() =>
     .join(', '),
 );
 
+const popups = ref<Popup[]>([]);
+let popupSerial = 0;
+
+function showPopups(events: GameEvent[]) {
+  for (const event of events) {
+    const popup: Popup = { id: ++popupSerial, ...event };
+    popups.value.push(popup);
+    setTimeout(() => (popups.value = popups.value.filter((p) => p.id !== popup.id)), POPUP_MS);
+  }
+}
+
 const move = (unitId: string, to: Coord) => run(() => store.sendAction({ type: 'move', unitId, to }));
+const harvest = (colonyId: string) =>
+  run(async () => showPopups(await store.sendAction({ type: 'harvest', colonyId })));
 const endTurn = () => run(() => store.sendAction({ type: 'end_turn' }));
 </script>
 
 <template>
   <section v-if="game" class="game">
-    <HexBoard :game="game" :viewer-id="session.player?.id ?? ''" @move="move" />
+    <HexBoard
+      :game="game"
+      :viewer-id="session.player?.id ?? ''"
+      :popups="popups"
+      @move="move"
+      @harvest="harvest"
+    />
 
     <div class="turnbar">
       <template v-if="game.winnerId">
@@ -36,7 +56,11 @@ const endTurn = () => run(() => store.sendAction({ type: 'end_turn' }));
       <template v-else>
         <strong>Ход {{ game.turn }}</strong>
         <span class="hint muted">
-          {{ store.isReady ? `Ход завершён. Ждём: ${waitingFor}` : 'Выберите подсвеченного юнита, затем соседнюю локацию.' }}
+          {{
+            store.isReady
+              ? `Ход завершён. Ждём: ${waitingFor}`
+              : 'Юнит: выберите его и соседнюю локацию. Колония: нажмите, чтобы добыть ресурс.'
+          }}
         </span>
         <button :disabled="store.isReady" @click="endTurn">Завершить ход</button>
       </template>

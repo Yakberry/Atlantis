@@ -10,6 +10,7 @@ const coordSchema = z.object({ q: z.number().int(), r: z.number().int() });
 
 export const gameActionSchema: z.ZodType<GameAction> = z.discriminatedUnion('type', [
   z.object({ type: z.literal('move'), unitId: z.string().max(64), to: coordSchema }),
+  z.object({ type: z.literal('harvest'), colonyId: z.string().max(64) }),
   z.object({ type: z.literal('end_turn') }),
 ]);
 

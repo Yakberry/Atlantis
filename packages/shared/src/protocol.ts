@@ -1,5 +1,6 @@
 import type { z } from 'zod';
 import type { ChatMessage, RoomSnapshot } from './domain';
+import type { GameEvent } from './game';
 import type { chatSendSchema, configureRoomSchema, gameActionPayloadSchema, roomRefSchema } from './schemas';
 
 export type AckResult<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -20,7 +21,8 @@ export interface ClientToServerEvents {
   /** Настройки лобби (только хост, только до старта игры). */
   'room:configure': (payload: ConfigureRoomPayload, ack: Ack<void>) => void;
   'game:start': (payload: RoomRef, ack: Ack<void>) => void;
-  'game:action': (payload: GameActionPayload, ack: Ack<void>) => void;
+  /** В ответ приходят события действия (например, сколько добыто). */
+  'game:action': (payload: GameActionPayload, ack: Ack<GameEvent[]>) => void;
   'chat:send': (payload: ChatSendPayload, ack: Ack<void>) => void;
 }
 

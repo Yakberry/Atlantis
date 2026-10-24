@@ -1,5 +1,5 @@
 import { distance, sameCell, type Coord } from './hex';
-import { UNIT_KINDS, type GameState, type GameView, type Hex, type Unit, type UnitView } from './model';
+import { emptyStock, UNIT_KINDS, type GameState, type GameView, type Hex, type Unit, type UnitView } from './model';
 
 /**
  * Где игрок «знает» юнита: свои — там, где они стоят сейчас (приказ действует мгновенно),
@@ -20,10 +20,11 @@ const toUnitView = (unit: Unit, viewerId: string): UnitView =>
  * - Тип видимой локации известен, если в ней кто-то побывал к последнему раскрытию хода
  *   либо если в ней сейчас стоит свой юнит. Чужие посещения до раскрытия хода не влияют на вид,
  *   иначе по внезапно открывшемуся ресурсу можно было бы вычислить чужой ход.
+ * - Запас ресурсов показывается только его владельцу.
  * - Чужие юниты видны там, где их показали при последнем раскрытии хода.
  */
 export function viewFor(state: GameState, viewerId: string): GameView {
-  const { hexes, units, ...rest } = state;
+  const { hexes, units, stock, ...rest } = state;
   const eyes = units.filter((unit) => unit.ownerId === viewerId);
 
   const sees = (hex: Hex) => eyes.some((eye) => distance(eye, hex) <= UNIT_KINDS[eye.kind].vision);
@@ -31,6 +32,7 @@ export function viewFor(state: GameState, viewerId: string): GameView {
 
   return {
     ...rest,
+    stock: stock[viewerId] ?? emptyStock(),
     hexes: hexes.map((hex) => {
       const { q, r } = hex;
       if (!sees(hex)) return { q, r, visible: false };

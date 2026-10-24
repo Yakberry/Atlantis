@@ -6,6 +6,7 @@ import {
   MAX_PLAYERS,
   MIN_PLAYERS,
   type GameAction,
+  type GameEvent,
   type Player,
   type GameState,
   type RoomSettings,
@@ -97,19 +98,21 @@ export const startGame = (player: Player, roomId: string): Promise<RoomState> =>
     return loadRoom(db, roomId);
   });
 
-export const performAction = (player: Player, roomId: string, action: GameAction): Promise<RoomState> =>
+export const performAction = (
+  player: Player,
+  roomId: string,
+  action: GameAction,
+): Promise<{ room: RoomState; events: GameEvent[] }> =>
   transaction(async (db) => {
     const room = await requireRoom(db, roomId, { lock: true });
     if (room.status !== 'playing' || !room.game) throw new AppError('Игра не идёт');
 
     const result = applyAction(room.game, player.id, action);
     if (!result.ok) throw new AppError(result.error);
+    const { state, events } = result.value;
 
-    await repo.updateRoom(db, roomId, {
-      game: result.value,
-      status: result.value.winnerId ? 'finished' : undefined,
-    });
-    return loadRoom(db, roomId);
+    await repo.updateRoom(db, roomId, { game: state, status: state.winnerId ? 'finished' : undefined });
+    return { room: await loadRoom(db, roomId), events };
   });
 
 async function requireRoom(db: Db, id: string, opts?: { lock?: boolean }) {

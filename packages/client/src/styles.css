@@ -87,10 +87,6 @@ button.secondary { background: transparent; border-color: var(--line); color: va
 }
 .target-overlay { fill: rgba(255, 255, 255, 0.16); stroke: #fff; stroke-width: 2; pointer-events: none; }
 
-.unit { stroke: var(--bg); stroke-width: 3; }
-.unit.selectable { cursor: pointer; }
-.unit.selected { stroke: #fff; stroke-width: 4; }
-.unit.tired { opacity: 0.4; }
 
 /* Мягкая подсветка своих юнитов, которые ещё не ходили. */
 .halo { fill: none; stroke: #fff; stroke-width: 2.5; pointer-events: none; animation: halo-pulse 1.8s ease-in-out infinite; }
@@ -109,4 +105,56 @@ button.secondary { background: transparent; border-color: var(--line); color: va
 .messages li.mine strong { color: var(--accent); }
 .messages li.system { color: var(--muted); font-style: italic; }
 
-.unit.colony { stroke-linejoin: round; }
+
+
+/* ---------- Запас ресурсов ---------- */
+.resources { display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; list-style: none; margin: 0; padding: 0; }
+.resource {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.2rem 0.85rem 0.2rem 0.6rem;
+  border: 2px solid var(--resource);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.2);
+}
+.resource-icon { display: grid; width: 1.4rem; height: 1.4rem; border-radius: 3px; }
+.resource-icon.plain { background: var(--resource); }
+.resource-icon img { width: 100%; height: 100%; }
+.resource-amount { min-width: 1.5ch; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ---------- Всплывающая цифра добычи ---------- */
+.floater { pointer-events: none; animation: floater-rise 1.2s ease-out forwards; }
+.floater-text {
+  fill: #fff;
+  font-size: 22px;
+  font-weight: 700;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke-width: 5px;
+  stroke-linejoin: round;
+}
+@keyframes floater-rise {
+  0% { transform: translateY(0); opacity: 0; }
+  15% { opacity: 1; }
+  100% { transform: translateY(-34px); opacity: 0; }
+}
+@keyframes floater-fade {
+  0%, 70% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .floater { animation-name: floater-fade; }
+}
+
+/* ---------- Юниты и постройки ---------- */
+.unit.selectable, .unit.harvestable { cursor: pointer; }
+.unit.tired { opacity: 0.4; }
+.unit .shape { stroke: var(--bg); stroke-width: 3; stroke-linejoin: round; }
+.unit .backdrop { fill: rgba(0, 0, 0, 0.35); }
+.unit.selected .shape { stroke: #fff; stroke-width: 4; }
+
+/* ---------- Настройки графики ---------- */
+.stage-actions { display: grid; justify-items: start; gap: 0.35rem; }
+.toggle { display: flex; align-items: center; gap: 0.4rem; color: var(--muted); font-size: 0.9rem; cursor: pointer; }
+.toggle input { padding: 0; border: 0; background: none; accent-color: var(--accent); }

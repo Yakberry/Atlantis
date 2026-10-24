@@ -7,6 +7,9 @@ export const MAX_MAP_SIZE = 25;
 export const DEFAULT_MAP_SIZE = 7;
 /** Подвижных юнитов у каждого игрока на старте (помимо колонии). */
 export const STARTING_UNITS = 2;
+/** Сколько единиц ресурса приносит одна добыча (случайно, включая границы). */
+export const HARVEST_MIN = 1;
+export const HARVEST_MAX = 3;
 /** Заглушка условия победы: когда счётчик ходов доходит до этого значения, игра заканчивается. */
 export const WIN_TURN = 3;
 
@@ -15,13 +18,17 @@ export const WIN_TURN = 3;
  * видят вокруг себя, участвуют в споре за локацию), но постройки не двигаются и видят на 1 локацию ближе.
  */
 export const UNIT_KINDS = {
-  unit: { vision: 2, mobile: true },
-  colony: { vision: 1, mobile: false },
+  unit: { vision: 2, mobile: true, harvests: false },
+  colony: { vision: 1, mobile: false, harvests: true },
 } as const;
 export type UnitKind = keyof typeof UNIT_KINDS;
 
 export const RESOURCES = ['food', 'wood', 'iron', 'gold'] as const;
 export type Resource = (typeof RESOURCES)[number];
+
+/** Запас игрока: по числу единиц каждого ресурса. */
+export type Stock = Record<Resource, number>;
+export const emptyStock = (): Stock => ({ food: 0, wood: 0, iron: 0, gold: 0 });
 
 export type Hex = Coord & {
   resource: Resource;
@@ -33,7 +40,7 @@ export type Unit = Coord & {
   id: string;
   ownerId: string;
   kind: UnitKind;
-  /** Уже ходил в этом ходу; сбрасывается, когда ход раскрывается. */
+  /** Уже действовал в этом ходу (ходил или добывал); сбрасывается, когда ход раскрывается. */
   tired: boolean;
   /** Где юнита видят противники: обновляется только при раскрытии хода. */
   revealed: Coord;
@@ -58,6 +65,8 @@ export type GameState = {
   turn: number;
   /** Игроки, уже завершившие текущий ход. */
   ready: string[];
+  /** Запасы ресурсов по игрокам. Для остальных игроков они скрыты. */
+  stock: Record<string, Stock>;
   winnerId: string | null;
   hexes: Hex[];
   units: Unit[];
@@ -77,10 +86,20 @@ export type HexView =
     });
 
 /** Состояние партии глазами одного игрока: без чужих тайн. */
-export type GameView = Omit<GameState, 'hexes' | 'units'> & { hexes: HexView[] };
+export type GameView = Omit<GameState, 'hexes' | 'units' | 'stock'> & {
+  hexes: HexView[];
+  /** Запас самого игрока. */
+  stock: Stock;
+};
 
 export type GameAction =
   | { type: 'move'; unitId: string; to: Coord }
+  | { type: 'harvest'; colonyId: string }
   | { type: 'end_turn' };
+
+/** Что произошло в результате действия: сообщается только тому, кто его совершил. */
+export type GameEvent = { type: 'harvested'; unitId: string; resource: Resource; amount: number };
+
+export type Applied = { state: GameState; events: GameEvent[] };
 
 export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
