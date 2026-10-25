@@ -1,4 +1,4 @@
-import { generateBoard } from './board';
+import { generateLand, surroundWithSea } from './board';
 import { distance, sameCell, type Coord } from './hex';
 import {
   emptyStock,
@@ -6,11 +6,13 @@ import {
   HARVEST_MIN,
   RESOURCES,
   STARTING_UNITS,
+  terrainOf,
   UNIT_KINDS,
   WIN_TURN,
   type Applied,
   type GameAction,
   type GameEvent,
+  type GameSettings,
   type GameState,
   type Hex,
   type Result,
@@ -22,17 +24,20 @@ import { pick, shuffle, type Rng } from './random';
 const ok = (state: GameState, events: GameEvent[] = []): Result<Applied> => ({ ok: true, value: { state, events } });
 const fail = (error: string): Result<Applied> => ({ ok: false, error });
 
-export function createGame(playerIds: string[], mapSize: number, rng: Rng = Math.random): GameState {
+export function createGame(playerIds: string[], settings: GameSettings, rng: Rng = Math.random): GameState {
   if (playerIds.length === 0) throw new Error('Нужен хотя бы один игрок');
 
-  const board: Hex[] = generateBoard(mapSize, rng).map((cell) => ({
-    ...cell,
-    resource: pick(RESOURCES, rng),
-    discovered: false,
-  }));
+  // `mapSize` — число клеток суши; вся суша окружена морем (контур и внутренние заливы).
+  const { mainland, islands } = generateLand(settings, rng);
+  const land = [...mainland, ...islands];
+  const board: Hex[] = [
+    ...land.map((cell) => ({ ...cell, type: pick(RESOURCES, rng), discovered: false })),
+    ...surroundWithSea(land).map((cell) => ({ ...cell, type: 'sea' as const, discovered: false })),
+  ];
 
   // У каждого игрока своя случайная стартовая локация (разные для всех): там колония и стартовые юниты.
-  const homes = shuffle(board, rng);
+  // Только на материке: пока нет кораблей, остров стал бы для игрока ловушкой.
+  const homes = shuffle(board.filter((hex) => mainland.some((cell) => sameCell(cell, hex))), rng);
   let serial = 0;
   const units = playerIds.flatMap((ownerId, i) => {
     const home = homes[i];
@@ -107,7 +112,9 @@ function moveUnit(state: GameState, playerId: string, unitId: string, to: Coord)
   if (!unit) return fail('Это не ваш юнит');
   if (!UNIT_KINDS[unit.kind].mobile) return fail('Постройки не умеют двигаться');
   if (unit.tired) return fail('Юнит уже ходил в этом ходу');
-  if (!state.hexes.some((hex) => sameCell(hex, to))) return fail('Такой локации нет');
+  const target = state.hexes.find((hex) => sameCell(hex, to));
+  if (!target) return fail('Такой локации нет');
+  if (UNIT_KINDS[unit.kind].terrain !== terrainOf(target.type)) return fail('Сюда этот юнит пройти не может');
   if (distance(unit, to) !== 1) return fail('Можно перейти только в соседнюю локацию');
 
   return ok({
@@ -124,7 +131,8 @@ function harvest(state: GameState, playerId: string, colonyId: string, rng: Rng)
   if (colony.tired) return fail('Колония уже добывала в этом ходу');
 
   const hex = state.hexes.find((h) => sameCell(h, colony));
-  if (!hex) return fail('Колония стоит вне карты');
+  if (!hex || hex.type === 'sea') return fail('Здесь нечего добывать');
+  const resource = hex.type;
 
   const amount = HARVEST_MIN + Math.floor(rng() * (HARVEST_MAX - HARVEST_MIN + 1));
   const mine = state.stock[playerId] ?? emptyStock();
@@ -132,10 +140,10 @@ function harvest(state: GameState, playerId: string, colonyId: string, rng: Rng)
   return ok(
     {
       ...state,
-      stock: { ...state.stock, [playerId]: { ...mine, [hex.resource]: mine[hex.resource] + amount } },
+      stock: { ...state.stock, [playerId]: { ...mine, [resource]: mine[resource] + amount } },
       units: state.units.map((u) => (u.id === colony.id ? { ...u, tired: true } : u)),
     },
-    [{ type: 'harvested', unitId: colony.id, resource: hex.resource, amount }],
+    [{ type: 'harvested', unitId: colony.id, resource, amount }],
   );
 }
 

@@ -15,7 +15,7 @@ body { margin: 0; background: var(--bg); color: var(--text); }
 h1, h2 { margin: 0; }
 a { color: var(--accent); }
 
-input, button {
+input, select, button {
   font: inherit;
   padding: 0.5rem 0.9rem;
   border-radius: 6px;
@@ -158,3 +158,6 @@ button.secondary { background: transparent; border-color: var(--line); color: va
 .stage-actions { display: grid; justify-items: start; gap: 0.35rem; }
 .toggle { display: flex; align-items: center; gap: 0.4rem; color: var(--muted); font-size: 0.9rem; cursor: pointer; }
 .toggle input { padding: 0; border: 0; background: none; accent-color: var(--accent); }
+
+/* Подсветка видна и на светлых локациях (мрамор). */
+.target-overlay, .halo { filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.85)); }

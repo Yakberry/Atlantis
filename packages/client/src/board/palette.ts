@@ -1,17 +1,17 @@
 import type { Resource } from '@atlantis/shared';
 
 export const RESOURCE_COLORS: Record<Resource, string> = {
-  food: '#3f7d4e',
-  wood: '#7a5230',
-  iron: '#5b7b99',
-  gold: '#a8841c',
+  food: '#C59137',
+  wood: '#4F9153',
+  iron: '#894927',
+  marble: '#d9dee6',
 };
 
 export const RESOURCE_LABELS: Record<Resource, string> = {
-  food: 'Продовольствие',
+  food: 'Еда',
   wood: 'Лес',
-  iron: 'Железо',
-  gold: 'Золото',
+  iron: 'Медь',
+  marble: 'Мрамор',
 };
 
 const PLAYER_COLORS = ['#ff3b4e', '#19d3ff', '#b06bff', '#ff9e2c'];
@@ -20,7 +20,10 @@ export const playerColor = (slot: number): string => PLAYER_COLORS[slot] ?? '#cc
 export const FOG_FILL = '#2b383d';
 export const FOG_STROKE = '#36454b';
 export const FREE_STROKE = 'rgba(255, 255, 255, 0.18)';
-export const CONTESTED_STROKE = '#ffffff';
+/** Не белый: мрамор светлый, и белая граница на нём бы терялась. */
+export const CONTESTED_STROKE = '#ffd84d';
+
+export const SEA_FILL = '#1f6fa3';
 
 /** Локация видна, но её тип ещё никто не изведал. Светлее «тумана», чтобы их не путать. */
 export const UNKNOWN_FILL = '#566b71';

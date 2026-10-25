@@ -97,8 +97,8 @@ export function registerSocket(io: AppServer): void {
 
     socket.on('room:configure', (payload, ack) =>
       respond(ack, async () => {
-        const { roomId, mapSize } = parse(configureRoomSchema, payload);
-        await broadcast(io, await rooms.configureRoom(player, roomId, { mapSize }));
+        const { roomId, ...settings } = parse(configureRoomSchema, payload);
+        await broadcast(io, await rooms.configureRoom(player, roomId, settings));
       }),
     );
 

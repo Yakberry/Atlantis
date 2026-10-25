@@ -1,4 +1,4 @@
-import { MIN_PLAYERS, type ChatMessage, type GameAction, type RoomSnapshot } from '@atlantis/shared';
+import { MIN_PLAYERS, type ChatMessage, type GameAction, type RoomSettings, type RoomSnapshot } from '@atlantis/shared';
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import { createSocket, unwrap, type AppSocket } from '../net/socket';
@@ -63,8 +63,8 @@ export const useRoomStore = defineStore('room', () => {
     reset();
   }
 
-  const setMapSize = async (mapSize: number) =>
-    unwrap(await connect().emitWithAck('room:configure', { roomId: currentRoomId(), mapSize }));
+  const configure = async (settings: RoomSettings) =>
+    unwrap(await connect().emitWithAck('room:configure', { roomId: currentRoomId(), ...settings }));
 
   const startGame = async () =>
     unwrap(await connect().emitWithAck('game:start', { roomId: currentRoomId() }));
@@ -77,6 +77,6 @@ export const useRoomStore = defineStore('room', () => {
 
   return {
     room, messages, isHost, isReady, canStart,
-    createRoom, join, leave, detach, setMapSize, startGame, sendAction, sendMessage,
+    createRoom, join, leave, detach, configure, startGame, sendAction, sendMessage,
   };
 });

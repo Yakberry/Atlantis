@@ -1,11 +1,11 @@
-import type { GameView } from './game';
+import type { GameSettings, GameView } from './game';
 
 export type Player = { id: string; name: string };
 export type Session = { token: string; player: Player };
 
 export type RoomStatus = 'lobby' | 'playing' | 'finished';
 
-export type RoomSettings = { mapSize: number };
+export type RoomSettings = GameSettings;
 
 export type RoomSnapshot = {
   id: string;

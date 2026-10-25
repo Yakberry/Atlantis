@@ -10,6 +10,7 @@ import {
   playerColor,
   RESOURCE_COLORS,
   RESOURCE_LABELS,
+  SEA_FILL,
   UNKNOWN_FILL,
   UNKNOWN_LABEL,
 } from '../board/palette';
@@ -63,11 +64,16 @@ const selectedId = ref<string | null>(null);
 const canAct = computed(() => !props.game.winnerId && !props.game.ready.includes(props.viewerId));
 watch(canAct, () => (selectedId.value = null));
 
-/** Локация, в которой стоит выбранный юнит. */
-const origin = computed(() => {
+/** Выбранный юнит: его вид и локация, в которой он стоит. */
+const selected = computed(() => {
   const id = selectedId.value;
   if (!id) return undefined;
-  return props.game.hexes.find((hex) => hex.visible && hex.units.some((unit) => unit.id === id));
+  for (const hex of props.game.hexes) {
+    if (!hex.visible) continue;
+    const unit = hex.units.find((u) => u.id === id);
+    if (unit) return { hex, kind: unit.kind };
+  }
+  return undefined;
 });
 
 const settings = useSettingsStore();
@@ -75,8 +81,11 @@ const settings = useSettingsStore();
 const colorOf = (playerId: string) => playerColor(props.game.slots[playerId] ?? -1);
 const slotIndexes = computed(() => Object.values(props.game.slots));
 
-const tileSpriteKey = (hex: HexView): SpriteKey =>
-  !hex.visible ? 'tiles/fog' : hex.resource ? `tiles/${hex.resource}` : 'tiles/unexplored';
+const tileSpriteKey = (hex: HexView): SpriteKey => {
+  if (!hex.visible) return 'tiles/fog';
+  if (hex.terrain === 'sea') return 'tiles/sea';
+  return hex.resource ? `tiles/${hex.resource}` : 'tiles/unexplored';
+};
 
 function unitTitle(kind: UnitKind, tired: boolean, harvestable: boolean): string {
   if (kind === 'colony') {
@@ -95,7 +104,13 @@ function toTile(hex: HexView): Tile {
     r,
     x,
     y,
-    targetable: canAct.value && origin.value !== undefined && distance(origin.value, hex) === 1,
+    // Выбранный юнит может сделать шаг в соседнюю локацию своей поверхности (юниты — по суше).
+    targetable:
+      canAct.value &&
+      selected.value !== undefined &&
+      hex.visible &&
+      hex.terrain === UNIT_KINDS[selected.value.kind].terrain &&
+      distance(selected.value.hex, hex) === 1,
   };
 
   if (!hex.visible) {
@@ -103,10 +118,10 @@ function toTile(hex: HexView): Tile {
   }
   return {
     ...base,
-    fill: hex.resource ? RESOURCE_COLORS[hex.resource] : UNKNOWN_FILL,
+    fill: hex.terrain === 'sea' ? SEA_FILL : hex.resource ? RESOURCE_COLORS[hex.resource] : UNKNOWN_FILL,
     stroke: hex.contested ? CONTESTED_STROKE : hex.ownerId ? colorOf(hex.ownerId) : FREE_STROKE,
     dashed: hex.contested,
-    label: hex.resource ? RESOURCE_LABELS[hex.resource] : UNKNOWN_LABEL,
+    label: hex.terrain === 'sea' ? '' : hex.resource ? RESOURCE_LABELS[hex.resource] : UNKNOWN_LABEL,
     units: hex.units.map((unit) => {
       // «Готов» — свой и ещё не использовал своё действие в этом ходу.
       const ready = unit.ownerId === props.viewerId && canAct.value && !unit.tired;
@@ -144,7 +159,7 @@ const floaters = computed(() =>
           x: tile.x + slot.x,
           y: tile.y + slot.y - 20,
           text: `+${popup.amount}`,
-          color: RESOURCE_COLORS[popup.resource],
+          color: `color-mix(in srgb, ${RESOURCE_COLORS[popup.resource]} 50%, black)`,
           icon: spriteUrl(`resources/${popup.resource}`),
         },
       ];

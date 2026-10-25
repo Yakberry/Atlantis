@@ -1,5 +1,5 @@
 import { distance, sameCell, type Coord } from './hex';
-import { emptyStock, UNIT_KINDS, type GameState, type GameView, type Hex, type Unit, type UnitView } from './model';
+import { emptyStock, terrainOf, UNIT_KINDS, type GameState, type GameView, type Hex, type Unit, type UnitView } from './model';
 
 /**
  * Где игрок «знает» юнита: свои — там, где они стоят сейчас (приказ действует мгновенно),
@@ -17,7 +17,7 @@ const toUnitView = (unit: Unit, viewerId: string): UnitView =>
  *
  * - Локацию видит тот, у кого достаточно близко стоит юнит или постройка (дальность зависит от вида).
  *   Про невидимые локации сервер не отправляет ничего, кроме координат.
- * - Тип видимой локации известен, если в ней кто-то побывал к последнему раскрытию хода
+ * - Море видно как море сразу. Ресурс видимой суши известен, если в ней кто-то побывал к последнему раскрытию хода
  *   либо если в ней сейчас стоит свой юнит. Чужие посещения до раскрытия хода не влияют на вид,
  *   иначе по внезапно открывшемуся ресурсу можно было бы вычислить чужой ход.
  * - Запас ресурсов показывается только его владельцу.
@@ -43,7 +43,8 @@ export function viewFor(state: GameState, viewerId: string): GameView {
         q,
         r,
         visible: true,
-        resource: knowsResource(hex) ? hex.resource : null,
+        terrain: terrainOf(hex.type),
+        resource: hex.type !== 'sea' && knowsResource(hex) ? hex.type : null,
         ownerId: owners.size === 1 ? ([...owners][0] ?? null) : null,
         contested: owners.size > 1,
         units: here.map((unit) => toUnitView(unit, viewerId)),

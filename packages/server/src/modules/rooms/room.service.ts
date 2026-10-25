@@ -81,7 +81,7 @@ export const configureRoom = (player: Player, roomId: string, settings: RoomSett
     if (room.hostId !== player.id) throw new AppError('Настройки меняет только хост');
     if (room.status !== 'lobby') throw new AppError('Нельзя менять настройки после старта игры');
 
-    await repo.updateRoom(db, roomId, { mapSize: settings.mapSize });
+    await repo.updateRoom(db, roomId, settings);
     return loadRoom(db, roomId);
   });
 
@@ -94,7 +94,8 @@ export const startGame = (player: Player, roomId: string): Promise<RoomState> =>
     const members = await repo.listMembers(db, roomId);
     if (members.length < MIN_PLAYERS) throw new AppError(`Нужно минимум игроков: ${MIN_PLAYERS}`);
 
-    await repo.updateRoom(db, roomId, { status: 'playing', game: createGame(members.map((m) => m.id), room.mapSize) });
+    const settings = { mapSize: room.mapSize, mapStyle: room.mapStyle };
+    await repo.updateRoom(db, roomId, { status: 'playing', game: createGame(members.map((m) => m.id), settings) });
     return loadRoom(db, roomId);
   });
 
@@ -122,6 +123,6 @@ async function requireRoom(db: Db, id: string, opts?: { lock?: boolean }) {
 }
 
 async function loadRoom(db: Db, id: string): Promise<RoomState> {
-  const { mapSize, ...room } = await requireRoom(db, id);
-  return { ...room, settings: { mapSize }, members: await repo.listMembers(db, id) };
+  const { mapSize, mapStyle, ...room } = await requireRoom(db, id);
+  return { ...room, settings: { mapSize, mapStyle }, members: await repo.listMembers(db, id) };
 }

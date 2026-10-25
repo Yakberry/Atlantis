@@ -3,8 +3,21 @@ import type { Coord } from './hex';
 export const MIN_PLAYERS = 1;
 export const MAX_PLAYERS = 4;
 export const MIN_MAP_SIZE = 5;
-export const MAX_MAP_SIZE = 25;
+export const MAX_MAP_SIZE = 35;
 export const DEFAULT_MAP_SIZE = 7;
+
+/**
+ * Способ генерации суши:
+ * - `classic` — материк, у которого могут вырастать тонкие отростки;
+ * - `solid` — цельный массив: клетки суши стремятся соседствовать с другими клетками суши;
+ * - `islands` — материк и отдельные острова (около `ISLAND_SHARE` суши, острова по 2–5 клеток).
+ */
+export const MAP_STYLES = ['classic', 'solid', 'islands'] as const;
+export type MapStyle = (typeof MAP_STYLES)[number];
+export const DEFAULT_MAP_STYLE: MapStyle = 'solid';
+
+/** Настройки карты, которые выбирает хост. `mapSize` — число клеток суши (море добавляется сверху). */
+export type GameSettings = { mapSize: number; mapStyle: MapStyle };
 /** Подвижных юнитов у каждого игрока на старте (помимо колонии). */
 export const STARTING_UNITS = 2;
 /** Сколько единиц ресурса приносит одна добыча (случайно, включая границы). */
@@ -16,23 +29,30 @@ export const WIN_TURN = 3;
 /**
  * Виды сущностей на карте. Все они — «юниты» в широком смысле (принадлежат игроку, стоят в локации,
  * видят вокруг себя, участвуют в споре за локацию), но постройки не двигаются и видят на 1 локацию ближе.
+ * `terrain` — по какой поверхности вид может стоять и двигаться (корабли добавятся со значением 'sea').
  */
 export const UNIT_KINDS = {
-  unit: { vision: 2, mobile: true, harvests: false },
-  colony: { vision: 1, mobile: false, harvests: true },
+  unit: { vision: 15, mobile: true, harvests: false, terrain: 'land' },
+  colony: { vision: 1, mobile: false, harvests: true, terrain: 'land' },
 } as const;
 export type UnitKind = keyof typeof UNIT_KINDS;
 
-export const RESOURCES = ['food', 'wood', 'iron', 'gold'] as const;
+export const RESOURCES = ['food', 'wood', 'iron', 'marble'] as const;
 export type Resource = (typeof RESOURCES)[number];
+
+/** Поверхность локации: по суше ходят юниты, по морю будут ходить корабли. */
+export type Terrain = 'land' | 'sea';
+/** Тип локации: ресурс для суши или море. */
+export type HexType = Resource | 'sea';
+export const terrainOf = (type: HexType): Terrain => (type === 'sea' ? 'sea' : 'land');
 
 /** Запас игрока: по числу единиц каждого ресурса. */
 export type Stock = Record<Resource, number>;
-export const emptyStock = (): Stock => ({ food: 0, wood: 0, iron: 0, gold: 0 });
+export const emptyStock = (): Stock => ({ food: 0, wood: 0, iron: 0, marble: 0 });
 
 export type Hex = Coord & {
-  resource: Resource;
-  /** Хоть один юнит побывал здесь к последнему раскрытию хода: тип локации известен всем, кто её видит. */
+  type: HexType;
+  /** Хоть один юнит побывал здесь к последнему раскрытию хода: ресурс суши известен всем, кто её видит. */
   discovered: boolean;
 };
 
@@ -77,7 +97,9 @@ export type HexView =
   | (Coord & { visible: false })
   | (Coord & {
       visible: true;
-      /** `null` — локацию видно, но тип ещё не изведан ни одним юнитом. */
+      /** Море видно как море сразу; суша — как суша, но её ресурс неизвестен, пока там никто не побывал. */
+      terrain: Terrain;
+      /** `null` — для моря и для суши, чей ресурс ещё не изведан ни одним юнитом. */
       resource: Resource | null;
       /** Единственный игрок, чьи юниты в локации; `null`, если она пуста или спорная. */
       ownerId: string | null;
