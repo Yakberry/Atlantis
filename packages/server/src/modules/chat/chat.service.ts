@@ -8,12 +8,12 @@ const HISTORY_LIMIT = 50;
 
 export async function sendMessage(player: Player, roomId: string, text: string): Promise<ChatMessage> {
   if (!(await isMember(pool, roomId, player.id))) throw new AppError('Вы не состоите в этой комнате');
-  return repo.insertMessage(pool, roomId, player, text);
+  return repo.insertMessage(pool, { roomId, text, author: player });
 }
 
-/** Служебное сообщение от имени игрока (членство не проверяем: он мог только что выйти). */
-export const announce = (roomId: string, player: Player, text: string): Promise<ChatMessage> =>
-  repo.insertMessage(pool, roomId, player, text, true);
+/** Служебное сообщение игры; `audience` — кому его показывать (без списка — всем). */
+export const announce = (roomId: string, text: string, audience?: string[]): Promise<ChatMessage> =>
+  repo.insertMessage(pool, { roomId, text, system: true, audience });
 
-export const getHistory = (roomId: string): Promise<ChatMessage[]> =>
-  repo.listRecent(pool, roomId, HISTORY_LIMIT);
+export const getHistory = (roomId: string, viewerId: string): Promise<ChatMessage[]> =>
+  repo.listRecent(pool, roomId, viewerId, HISTORY_LIMIT);

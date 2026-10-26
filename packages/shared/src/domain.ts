@@ -19,7 +19,8 @@ export type RoomSnapshot = {
 
 export type ChatMessage = {
   id: string;
-  author: Player;
+  /** `null` — служебное сообщение игры. */
+  author: Player | null;
   text: string;
   sentAt: string;
   /** Служебное сообщение (выход игрока и т.п.), а не реплика игрока. */

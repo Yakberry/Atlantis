@@ -7,6 +7,7 @@ import {
   MIN_PLAYERS,
   type GameAction,
   type GameEvent,
+  type Report,
   type Player,
   type GameState,
   type RoomSettings,
@@ -54,7 +55,7 @@ export const joinRoom = (player: Player, roomId: string): Promise<RoomState> =>
  * Выход насовсем. Возвращает `null`, если комната опустела и была удалена.
  * Хост уходит — роль достаётся тому, кто вошёл раньше остальных.
  */
-export const leaveRoom = (player: Player, roomId: string): Promise<RoomState | null> =>
+export const leaveRoom = (player: Player, roomId: string): Promise<{ room: RoomState; reports: Report[] } | null> =>
   transaction(async (db) => {
     const room = await requireRoom(db, roomId, { lock: true });
     if (!(await repo.isMember(db, roomId, player.id))) throw new AppError('Вы не состоите в этой комнате');
@@ -66,13 +67,13 @@ export const leaveRoom = (player: Player, roomId: string): Promise<RoomState | n
       return null;
     }
 
-    const game = room.status === 'playing' && room.game ? removePlayer(room.game, player.id) : undefined;
+    const left = room.status === 'playing' && room.game ? removePlayer(room.game, player.id) : undefined;
     await repo.updateRoom(db, roomId, {
       hostId: room.hostId === player.id ? heir.id : undefined,
-      game,
-      status: game?.winnerId ? 'finished' : undefined,
+      game: left?.state,
+      status: left?.state.winnerId ? 'finished' : undefined,
     });
-    return loadRoom(db, roomId);
+    return { room: await loadRoom(db, roomId), reports: left?.reports ?? [] };
   });
 
 export const configureRoom = (player: Player, roomId: string, settings: RoomSettings): Promise<RoomState> =>
@@ -103,17 +104,17 @@ export const performAction = (
   player: Player,
   roomId: string,
   action: GameAction,
-): Promise<{ room: RoomState; events: GameEvent[] }> =>
+): Promise<{ room: RoomState; events: GameEvent[]; reports: Report[] }> =>
   transaction(async (db) => {
     const room = await requireRoom(db, roomId, { lock: true });
     if (room.status !== 'playing' || !room.game) throw new AppError('Игра не идёт');
 
     const result = applyAction(room.game, player.id, action);
     if (!result.ok) throw new AppError(result.error);
-    const { state, events } = result.value;
+    const { state, events, reports } = result.value;
 
     await repo.updateRoom(db, roomId, { game: state, status: state.winnerId ? 'finished' : undefined });
-    return { room: await loadRoom(db, roomId), events };
+    return { room: await loadRoom(db, roomId), events, reports };
   });
 
 async function requireRoom(db: Db, id: string, opts?: { lock?: boolean }) {

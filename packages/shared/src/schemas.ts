@@ -11,7 +11,8 @@ const coordSchema = z.object({ q: z.number().int(), r: z.number().int() });
 export const gameActionSchema: z.ZodType<GameAction> = z.discriminatedUnion('type', [
   z.object({ type: z.literal('move'), unitId: z.string().max(64), to: coordSchema }),
   z.object({ type: z.literal('harvest'), colonyId: z.string().max(64) }),
-  z.object({ type: z.literal('end_turn') }),
+  z.object({ type: z.literal('drop_unsupplied'), unitIds: z.array(z.string().max(64)).max(200) }),
+  z.object({ type: z.literal('end_phase') }),
 ]);
 
 export const mapSizeSchema = z.number().int().min(MIN_MAP_SIZE).max(MAX_MAP_SIZE);

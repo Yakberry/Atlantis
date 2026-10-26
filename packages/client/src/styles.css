@@ -161,3 +161,22 @@ button.secondary { background: transparent; border-color: var(--line); color: va
 
 /* Подсветка видна и на светлых локациях (мрамор). */
 .target-overlay, .halo { filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.85)); }
+
+/* ---------- Фазы хода ---------- */
+.phases { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; margin: 0; padding: 0; list-style: none; color: var(--muted); }
+.phases .turn { color: var(--text); font-weight: 600; }
+.phases .current { color: var(--accent); font-weight: 600; }
+
+/* ---------- Запасы ---------- */
+.resource .need { color: var(--muted); font-size: 0.9em; }
+.resource.short { border-color: var(--danger); }
+.resource.short .need { color: var(--danger); font-weight: 600; }
+.chips { display: inline-flex; gap: 0.5rem; margin-left: 0.5rem; vertical-align: middle; }
+.chip { display: inline-flex; align-items: center; gap: 0.2rem; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.chip::before { content: ''; width: 0.6rem; height: 0.6rem; border-radius: 2px; background: var(--resource); }
+
+/* ---------- Снабжение и захват ---------- */
+.unit.droppable { cursor: pointer; }
+.unit.marked { opacity: 0.55; }
+.unit.marked .shape { stroke: var(--danger); stroke-width: 4; }
+.unit.captured .shape { stroke: var(--danger); stroke-dasharray: 4 3; }

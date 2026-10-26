@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { distance, UNIT_KINDS, type Coord, type GameView, type HexView, type UnitKind } from '@atlantis/shared';
+import { distance, isCaptured, UNIT_KINDS, type Coord, type GameView, type HexView, type UnitKind } from '@atlantis/shared';
 import { computed, ref, watch } from 'vue';
 import { boardBounds, COLONY_POINTS, HEX_IMAGE, HEX_POINTS, hexCenter, unitSlot } from '../board/layout';
 import {
@@ -19,8 +19,22 @@ import { spriteUrl, type SpriteKey } from '../board/sprites';
 import { usePanZoom } from '../composables/usePanZoom';
 import { useSettingsStore } from '../stores/settings';
 
-const props = withDefaults(defineProps<{ game: GameView; viewerId: string; popups?: Popup[] }>(), { popups: () => [] });
-const emit = defineEmits<{ move: [unitId: string, to: Coord]; harvest: [colonyId: string] }>();
+const props = withDefaults(
+  defineProps<{
+    game: GameView;
+    viewerId: string;
+    popups?: Popup[];
+    /** Идёт выбор, кто останется без снабжения: свои юниты и постройки выбираются кликом. */
+    picking?: boolean;
+    unsupplied?: string[];
+  }>(),
+  { popups: () => [], picking: false, unsupplied: () => [] },
+);
+const emit = defineEmits<{
+  move: [unitId: string, to: Coord];
+  harvest: [colonyId: string];
+  toggleSupply: [unitId: string];
+}>();
 
 type TileUnit = {
   id: string;
@@ -36,6 +50,12 @@ type TileUnit = {
   selectable: boolean;
   /** Можно нажать, чтобы добыть ресурс. */
   harvestable: boolean;
+  /** Можно нажать, чтобы оставить без снабжения. */
+  droppable: boolean;
+  /** Выбран остаться без снабжения. */
+  marked: boolean;
+  /** Колония, в локации которой стоят чужие юниты. */
+  captured: boolean;
   tired: boolean;
 };
 type Tile = {
@@ -48,6 +68,7 @@ type Tile = {
   stroke: string;
   dashed: boolean;
   label: string;
+  title: string;
   /** Картинка локации (если нарисована и включена); иначе рисуем заливку `fill`. */
   sprite: string | undefined;
   targetable: boolean;
@@ -60,9 +81,9 @@ const { viewBox, fit, zoomBy, wasDragged, handlers } = usePanZoom(viewport, boun
 
 const selectedId = ref<string | null>(null);
 
-/** Приказы можно отдавать, пока игра идёт и мы не завершили ход. */
+/** Приказы можно отдавать, пока игра идёт и мы не завершили текущую фазу. */
 const canAct = computed(() => !props.game.winnerId && !props.game.ready.includes(props.viewerId));
-watch(canAct, () => (selectedId.value = null));
+watch([canAct, () => props.game.phase], () => (selectedId.value = null));
 
 /** Выбранный юнит: его вид и локация, в которой он стоит. */
 const selected = computed(() => {
@@ -87,11 +108,13 @@ const tileSpriteKey = (hex: HexView): SpriteKey => {
   return hex.resource ? `tiles/${hex.resource}` : 'tiles/unexplored';
 };
 
-function unitTitle(kind: UnitKind, tired: boolean, harvestable: boolean): string {
-  if (kind === 'colony') {
-    return tired ? 'Колония уже добывала в этом ходу' : harvestable ? 'Нажмите, чтобы добыть ресурс' : 'Колония';
+function unitTitle(unit: Pick<TileUnit, 'kind' | 'tired' | 'harvestable' | 'captured' | 'droppable' | 'marked'>): string {
+  if (unit.droppable) return unit.marked ? 'Останется без снабжения (нажмите, чтобы отменить)' : 'Нажмите, чтобы оставить без снабжения';
+  if (unit.kind === 'colony') {
+    if (unit.captured) return 'Колония захвачена: добыча невозможна';
+    return unit.tired ? 'Колония уже добывала в этом ходу' : unit.harvestable ? 'Нажмите, чтобы добыть ресурс' : 'Колония';
   }
-  return tired ? 'Юнит уже ходил в этом ходу' : 'Юнит';
+  return unit.tired ? 'Юнит уже ходил в этом ходу' : 'Юнит';
 }
 
 function toTile(hex: HexView): Tile {
@@ -114,31 +137,40 @@ function toTile(hex: HexView): Tile {
   };
 
   if (!hex.visible) {
-    return { ...base, fill: FOG_FILL, stroke: FOG_STROKE, dashed: false, label: '', units: [] };
+    return { ...base, fill: FOG_FILL, stroke: FOG_STROKE, dashed: false, label: '', title: `Неизвестно (${q}, ${r})`, units: [] };
   }
+  const label = hex.terrain === 'sea' ? '' : hex.resource ? RESOURCE_LABELS[hex.resource] : UNKNOWN_LABEL;
   return {
     ...base,
     fill: hex.terrain === 'sea' ? SEA_FILL : hex.resource ? RESOURCE_COLORS[hex.resource] : UNKNOWN_FILL,
     stroke: hex.contested ? CONTESTED_STROKE : hex.ownerId ? colorOf(hex.ownerId) : FREE_STROKE,
     dashed: hex.contested,
-    label: hex.terrain === 'sea' ? '' : hex.resource ? RESOURCE_LABELS[hex.resource] : UNKNOWN_LABEL,
+    label,
+    title: `${label || 'Море'} (${q}, ${r})`,
     units: hex.units.map((unit) => {
-      // «Готов» — свой и ещё не использовал своё действие в этом ходу.
-      const ready = unit.ownerId === props.viewerId && canAct.value && !unit.tired;
-      const slot = props.game.slots[unit.ownerId] ?? null;
-      const harvestable = ready && UNIT_KINDS[unit.kind].harvests;
-      const tired = unit.tired === true;
-      return {
-        id: unit.id,
+      const info = UNIT_KINDS[unit.kind];
+      const mine = unit.ownerId === props.viewerId;
+      // «Готов»: свой и ещё не использовал своё действие в этой фазе.
+      const idle = mine && canAct.value && !unit.tired;
+      const captured = info.harvests && isCaptured(unit.ownerId, hex.units);
+      const part = {
         kind: unit.kind,
+        tired: unit.tired === true,
+        captured,
+        harvestable: idle && props.game.phase === 'harvest' && info.harvests && !captured,
+        droppable: props.picking && mine,
+        marked: props.unsupplied.includes(unit.id),
+      };
+      const slot = props.game.slots[unit.ownerId] ?? null;
+      return {
+        ...part,
+        id: unit.id,
         color: colorOf(unit.ownerId),
         slot,
         sprite: slot === null ? undefined : spriteUrl(`units/${unit.kind}`),
-        title: unitTitle(unit.kind, tired, harvestable),
+        title: unitTitle(part),
         selected: unit.id === selectedId.value,
-        selectable: ready && UNIT_KINDS[unit.kind].mobile,
-        harvestable,
-        tired,
+        selectable: idle && props.game.phase === 'maneuver' && info.mobile,
       };
     }),
   };
@@ -175,6 +207,11 @@ const slotTransform = (index: number, count: number) => {
 
 function onUnitClick(unit: TileUnit, event: MouseEvent) {
   if (wasDragged()) return;
+  if (unit.droppable) {
+    event.stopPropagation();
+    emit('toggleSupply', unit.id);
+    return;
+  }
   if (unit.harvestable) {
     event.stopPropagation();
     selectedId.value = null;
@@ -221,6 +258,7 @@ function onTileClick(tile: Tile) {
         :class="{ target: tile.targetable }"
         @click="onTileClick(tile)"
       >
+        <title>{{ tile.title }}</title>
         <image v-if="tile.sprite" :href="tile.sprite" v-bind="HEX_IMAGE" clip-path="url(#hex-clip)" />
         <polygon
           :points="HEX_POINTS"
@@ -235,7 +273,18 @@ function onTileClick(tile: Tile) {
           v-for="(unit, i) in tile.units"
           :key="unit.id"
           :transform="slotTransform(i, tile.units.length)"
-          :class="['unit', { selectable: unit.selectable, harvestable: unit.harvestable, selected: unit.selected, tired: unit.tired }]"
+          :class="[
+            'unit',
+            {
+              selectable: unit.selectable,
+              harvestable: unit.harvestable,
+              droppable: unit.droppable,
+              selected: unit.selected,
+              marked: unit.marked,
+              captured: unit.captured,
+              tired: unit.tired,
+            },
+          ]"
           @click="onUnitClick(unit, $event)"
         >
           <circle v-if="(unit.selectable || unit.harvestable) && !unit.selected" r="17" class="halo" />

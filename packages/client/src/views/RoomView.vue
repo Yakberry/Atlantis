@@ -41,7 +41,7 @@ onBeforeUnmount(() => store.detach());
           </div>
         </header>
 
-        <ResourceBar v-if="store.room.game" :stock="store.room.game.stock" />
+        <ResourceBar v-if="store.room.game" :stock="store.room.game.stock" :supply="store.room.game.supply" />
 
         <div v-if="store.room.status === 'lobby'" class="stack">
           <p class="muted">Ссылка для друзей: {{ link }}</p>

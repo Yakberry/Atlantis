@@ -7,12 +7,7 @@ export const RESOURCE_COLORS: Record<Resource, string> = {
   marble: '#d9dee6',
 };
 
-export const RESOURCE_LABELS: Record<Resource, string> = {
-  food: 'Еда',
-  wood: 'Лес',
-  iron: 'Медь',
-  marble: 'Мрамор',
-};
+export { RESOURCE_LABELS } from '@atlantis/shared';
 
 const PLAYER_COLORS = ['#ff3b4e', '#19d3ff', '#b06bff', '#ff9e2c'];
 export const playerColor = (slot: number): string => PLAYER_COLORS[slot] ?? '#cccccc';

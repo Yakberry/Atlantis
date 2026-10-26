@@ -1,28 +1,25 @@
 import { generateLand, surroundWithSea } from './board';
-import { distance, sameCell, type Coord } from './hex';
+import { sameCell } from './hex';
+import { harvestColony, harvestRemaining } from './harvest';
+import { markDiscovered, moveUnit } from './maneuver';
 import {
-  emptyStock,
-  HARVEST_MAX,
-  HARVEST_MIN,
   RESOURCES,
+  START_STOCK,
   STARTING_UNITS,
-  terrainOf,
-  UNIT_KINDS,
-  WIN_TURN,
   type Applied,
   type GameAction,
-  type GameEvent,
   type GameSettings,
   type GameState,
   type Hex,
+  type Report,
   type Result,
   type Unit,
   type UnitKind,
 } from './model';
+import { settle } from './phases';
 import { pick, shuffle, type Rng } from './random';
-
-const ok = (state: GameState, events: GameEvent[] = []): Result<Applied> => ({ ok: true, value: { state, events } });
-const fail = (error: string): Result<Applied> => ({ ok: false, error });
+import { fail, ok } from './result';
+import { dropUnsupplied } from './supply';
 
 export function createGame(playerIds: string[], settings: GameSettings, rng: Rng = Math.random): GameState {
   if (playerIds.length === 0) throw new Error('Нужен хотя бы один игрок');
@@ -55,19 +52,23 @@ export function createGame(playerIds: string[], settings: GameSettings, rng: Rng
     return [spawn('colony'), ...Array.from({ length: STARTING_UNITS }, () => spawn('unit'))];
   });
 
-  return {
+  const stock = Object.fromEntries(playerIds.map((id) => [id, { ...START_STOCK }]));
+  const state: GameState = {
     playerOrder: playerIds,
     slots: Object.fromEntries(playerIds.map((id, i) => [id, i])),
     turn: 1,
+    phase: 'maneuver',
     ready: [],
-    stock: Object.fromEntries(playerIds.map((id) => [id, emptyStock()])),
+    stock,
+    shownStock: Object.fromEntries(playerIds.map((id) => [id, { ...START_STOCK }])),
     winnerId: null,
     hexes: markDiscovered(board, units),
     units,
   };
+  return settle(state, rng).state;
 }
 
-/** `rng` нужен действиям со случайным исходом (добыча); по умолчанию — `Math.random`. */
+/** `rng` нужен действиям со случайным исходом (добыча, бой, «разъезд»); по умолчанию — `Math.random`. */
 export function applyAction(
   state: GameState,
   playerId: string,
@@ -76,99 +77,64 @@ export function applyAction(
 ): Result<Applied> {
   if (state.winnerId) return fail('Игра уже окончена');
   if (!state.playerOrder.includes(playerId)) return fail('Вы не участвуете в игре');
-  if (state.ready.includes(playerId)) return fail('Вы уже завершили ход');
+  if (state.ready.includes(playerId)) return fail('Вы уже завершили эту фазу');
 
+  const done = perform(state, playerId, action, rng);
+  if (!done.ok) return done;
+
+  const settled = settle(done.value.state, rng);
+  return ok(settled.state, done.value.events, [...done.value.reports, ...settled.reports]);
+}
+
+function perform(state: GameState, playerId: string, action: GameAction, rng: Rng): Result<Applied> {
   switch (action.type) {
     case 'move':
+      if (state.phase !== 'maneuver') return fail('Двигаться можно только на фазе манёвра');
       return moveUnit(state, playerId, action.unitId, action.to);
+
     case 'harvest':
-      return harvest(state, playerId, action.colonyId, rng);
-    case 'end_turn':
-      return ok(revealIfAllReady({ ...state, ready: [...state.ready, playerId] }));
+      if (state.phase !== 'harvest') return fail('Добывать ресурсы можно только на фазе добычи');
+      return harvestColony(state, playerId, action.colonyId, rng);
+
+    case 'drop_unsupplied':
+      if (state.phase !== 'supply') return fail('Сейчас не фаза снабжения');
+      return dropUnsupplied(state, playerId, action.unitIds);
+
+    case 'end_phase':
+      switch (state.phase) {
+        case 'maneuver':
+          return ok({ ...state, ready: [...state.ready, playerId] });
+        case 'harvest': {
+          const { state: harvested, events } = harvestRemaining(state, playerId, rng);
+          return ok({ ...harvested, ready: [...harvested.ready, playerId] }, events);
+        }
+        case 'supply':
+          return fail('Не хватает ресурсов: выберите, кто останется без снабжения');
+      }
   }
 }
 
 /** Игрок вышел посреди партии: его юниты, постройки и запасы исчезают, последний оставшийся побеждает. */
-export function removePlayer(state: GameState, playerId: string): GameState {
-  if (state.winnerId || !state.playerOrder.includes(playerId)) return state;
+export function removePlayer(
+  state: GameState,
+  playerId: string,
+  rng: Rng = Math.random,
+): { state: GameState; reports: Report[] } {
+  if (state.winnerId || !state.playerOrder.includes(playerId)) return { state, reports: [] };
 
+  const without = <T>(record: Record<string, T>) =>
+    Object.fromEntries(Object.entries(record).filter(([id]) => id !== playerId));
   const playerOrder = state.playerOrder.filter((id) => id !== playerId);
   const next: GameState = {
     ...state,
     playerOrder,
     ready: state.ready.filter((id) => id !== playerId),
-    stock: Object.fromEntries(Object.entries(state.stock).filter(([id]) => id !== playerId)),
+    stock: without(state.stock),
+    shownStock: without(state.shownStock),
     units: state.units.filter((unit) => unit.ownerId !== playerId),
   };
 
-  if (playerOrder.length <= 1) return { ...next, winnerId: playerOrder[0] ?? null };
+  if (playerOrder.length <= 1) return { state: { ...next, winnerId: playerOrder[0] ?? null }, reports: [] };
   // Ушедший мог быть последним, кого ждали.
-  return revealIfAllReady(next);
-}
-
-/** Юнит переходит в соседнюю локацию сразу (для его владельца), противники узнают об этом при раскрытии хода. */
-function moveUnit(state: GameState, playerId: string, unitId: string, to: Coord): Result<Applied> {
-  const unit = state.units.find((u) => u.id === unitId && u.ownerId === playerId);
-  if (!unit) return fail('Это не ваш юнит');
-  if (!UNIT_KINDS[unit.kind].mobile) return fail('Постройки не умеют двигаться');
-  if (unit.tired) return fail('Юнит уже ходил в этом ходу');
-  const target = state.hexes.find((hex) => sameCell(hex, to));
-  if (!target) return fail('Такой локации нет');
-  if (UNIT_KINDS[unit.kind].terrain !== terrainOf(target.type)) return fail('Сюда этот юнит пройти не может');
-  if (distance(unit, to) !== 1) return fail('Можно перейти только в соседнюю локацию');
-
-  return ok({
-    ...state,
-    units: state.units.map((u) => (u.id === unit.id ? { ...u, q: to.q, r: to.r, tired: true } : u)),
-  });
-}
-
-/** Колония раз в ход приносит от HARVEST_MIN до HARVEST_MAX единиц ресурса своей локации. */
-function harvest(state: GameState, playerId: string, colonyId: string, rng: Rng): Result<Applied> {
-  const colony = state.units.find((u) => u.id === colonyId && u.ownerId === playerId);
-  if (!colony) return fail('Это не ваша постройка');
-  if (!UNIT_KINDS[colony.kind].harvests) return fail('Эта сущность ничего не добывает');
-  if (colony.tired) return fail('Колония уже добывала в этом ходу');
-
-  const hex = state.hexes.find((h) => sameCell(h, colony));
-  if (!hex || hex.type === 'sea') return fail('Здесь нечего добывать');
-  const resource = hex.type;
-
-  const amount = HARVEST_MIN + Math.floor(rng() * (HARVEST_MAX - HARVEST_MIN + 1));
-  const mine = state.stock[playerId] ?? emptyStock();
-
-  return ok(
-    {
-      ...state,
-      stock: { ...state.stock, [playerId]: { ...mine, [resource]: mine[resource] + amount } },
-      units: state.units.map((u) => (u.id === colony.id ? { ...u, tired: true } : u)),
-    },
-    [{ type: 'harvested', unitId: colony.id, resource, amount }],
-  );
-}
-
-/**
- * Когда все игроки завершили ход: перемещения становятся известны всем, юниты и колонии отдыхают,
- * локации, где кто-то побывал, считаются изведанными, начинается новый ход.
- */
-function revealIfAllReady(state: GameState): GameState {
-  if (!state.playerOrder.every((id) => state.ready.includes(id))) return state;
-
-  const units = state.units.map((u) => ({ ...u, tired: false, revealed: { q: u.q, r: u.r } }));
-  return checkVictory({
-    ...state,
-    units,
-    hexes: markDiscovered(state.hexes, units),
-    ready: [],
-    turn: state.turn + 1,
-  });
-}
-
-const markDiscovered = (hexes: Hex[], units: Unit[]): Hex[] =>
-  hexes.map((hex) =>
-    hex.discovered || units.some((unit) => sameCell(unit, hex)) ? { ...hex, discovered: true } : hex,
-  );
-
-function checkVictory(state: GameState): GameState {
-  return state.turn >= WIN_TURN ? { ...state, winnerId: state.playerOrder[0] ?? null } : state;
+  return settle(next, rng);
 }

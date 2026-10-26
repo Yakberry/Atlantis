@@ -3,7 +3,8 @@ import { RESOURCES, type Resource, type Stock } from '@atlantis/shared';
 import { RESOURCE_COLORS, RESOURCE_LABELS } from '../board/palette';
 import { spriteUrl } from '../board/sprites';
 
-defineProps<{ stock: Stock }>();
+/** `supply` — сколько нужно на снабжение ваших юнитов и построек: показывается в скобках после запаса. */
+defineProps<{ stock: Stock; supply: Stock }>();
 
 const icon = (resource: Resource) => spriteUrl(`resources/${resource}`);
 </script>
@@ -13,7 +14,7 @@ const icon = (resource: Resource) => spriteUrl(`resources/${resource}`);
     <li
       v-for="resource in RESOURCES"
       :key="resource"
-      class="resource"
+      :class="['resource', { short: stock[resource] < supply[resource] }]"
       :style="{ '--resource': RESOURCE_COLORS[resource] }"
     >
       <span :class="['resource-icon', { plain: !icon(resource) }]" aria-hidden="true">
@@ -21,6 +22,7 @@ const icon = (resource: Resource) => spriteUrl(`resources/${resource}`);
       </span>
       <span class="resource-name">{{ RESOURCE_LABELS[resource] }}</span>
       <strong class="resource-amount">{{ stock[resource] }}</strong>
+      <span class="need" title="Нужно на снабжение">({{ supply[resource] }})</span>
     </li>
   </ul>
 </template>
