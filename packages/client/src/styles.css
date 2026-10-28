@@ -76,15 +76,16 @@ button.secondary { background: transparent; border-color: var(--line); color: va
 .viewport-controls { position: absolute; top: 0.5rem; right: 0.5rem; display: grid; gap: 0.35rem; }
 .viewport-controls button { width: 2.2rem; padding: 0.25rem 0; line-height: 1.2; }
 
-.tile-label {
+.tile-name, .tile-sub {
   fill: #fff;
-  font-size: 11px;
   text-anchor: middle;
   pointer-events: none;
   paint-order: stroke;
   stroke: rgba(0, 0, 0, 0.5);
   stroke-width: 3px;
 }
+.tile-name { font-size: 11px; font-weight: 700; }
+.tile-sub { font-size: 8.5px; }
 .target-overlay { fill: rgba(255, 255, 255, 0.16); stroke: #fff; stroke-width: 2; pointer-events: none; }
 
 
@@ -180,3 +181,43 @@ button.secondary { background: transparent; border-color: var(--line); color: va
 .unit.marked { opacity: 0.55; }
 .unit.marked .shape { stroke: var(--danger); stroke-width: 4; }
 .unit.captured .shape { stroke: var(--danger); stroke-dasharray: 4 3; }
+
+/* ---------- Строительство ---------- */
+.site-overlay { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-dasharray: 5 4; pointer-events: none; filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.85)); }
+.site-overlay.chosen { fill: rgba(232, 192, 125, 0.22); stroke-dasharray: none; stroke-width: 3.5; }
+.road { pointer-events: none; }
+.road-casing { stroke: rgba(0, 0, 0, 0.55); stroke-width: 10; stroke-linecap: round; }
+.road-line { stroke-width: 6; stroke-linecap: round; }
+.unit .fort { stroke-width: 4; }
+
+.build-menu {
+  position: absolute;
+  left: 50%;
+  bottom: 0.75rem;
+  transform: translateX(-50%);
+  max-width: calc(100% - 1.5rem);
+  padding: 0.5rem 0.75rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(11, 42, 51, 0.94);
+}
+.build-menu header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.4rem; }
+.build-menu p { margin: 0 0 0.4rem; font-size: 0.9rem; }
+.build-menu .close { padding: 0 0.5rem; line-height: 1.4; }
+.cards { display: flex; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
+.card {
+  display: grid;
+  justify-items: center;
+  gap: 0.25rem;
+  min-width: 7.5rem;
+  padding: 0.5rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-weight: 400;
+}
+.card strong { font-size: 0.85rem; text-align: center; }
+.card.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.card-art { display: grid; place-items: center; width: 2.5rem; height: 2.5rem; font-size: 1.6rem; line-height: 1; }
+.card-art img { width: 100%; height: 100%; }
+.card-cost { display: flex; gap: 0.5rem; }

@@ -1,5 +1,5 @@
 import { sameCell } from './hex';
-import { DIE_SIDES, SIEGE_HIT, UNIT_KINDS, type GameState, type Report, type Unit } from './model';
+import { DIE_SIDES, UNIT_KINDS, type GameState, type Report, type Unit } from './model';
 import type { Rng } from './random';
 import { canSee } from './visibility';
 
@@ -12,7 +12,7 @@ const isBuilding = (unit: Unit) => UNIT_KINDS[unit.kind].building;
  *   одиночным результатом и уничтожает всех юнитов соперников; если наивысший результат выпал нескольким
  *   игрокам — ничья, потерь нет;
  * - если юниты есть у одного игрока, а в локации стоит вражеская постройка — осада: нападающие бросают d6;
- *   результат ≥ SIEGE_HIT у любого — постройка уничтожена, иначе нападающие теряют случайного юнита.
+ *   результат ≥ `siegeHit` постройки (колония 4, укреплённая 5) у любого — постройка уничтожена, иначе нападающие теряют случайного юнита.
  * Постройки в бою не бросают кубик. Победителя боя постройка проигравшего в тот же ход не осаждается.
  */
 export function resolveBattles(state: GameState, rng: Rng): { state: GameState; reports: Report[] } {
@@ -60,7 +60,7 @@ export function resolveBattles(state: GameState, rng: Rng): { state: GameState; 
       for (const building of here.filter((u) => isBuilding(u) && u.ownerId !== attackerId)) {
         if (alive.length === 0) break;
         const rolls = alive.map(() => d6(rng));
-        const hit = rolls.some((roll) => roll >= SIEGE_HIT);
+        const hit = rolls.some((roll) => roll >= UNIT_KINDS[building.kind].siegeHit);
         if (hit) {
           destroyed.add(building.id);
         } else {

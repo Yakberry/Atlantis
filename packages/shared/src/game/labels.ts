@@ -1,8 +1,8 @@
 import type { Resource } from './model';
 
 export const RESOURCE_LABELS: Record<Resource, string> = {
-  food: 'Еда',
+  food: 'Пища',
   wood: 'Лес',
-  iron: 'Медь',
   marble: 'Мрамор',
+  copper: 'Медь',
 };

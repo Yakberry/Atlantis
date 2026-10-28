@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MAP_STYLES, MAX_MAP_SIZE, MIN_MAP_SIZE, type GameAction } from './game';
+import { BUILDING_TYPES, MAP_STYLES, MAX_MAP_SIZE, MIN_MAP_SIZE, type GameAction } from './game';
 
 export const tokenSchema = z.string().uuid();
 export const playerNameSchema = z.string().trim().min(2).max(24);
@@ -12,6 +12,7 @@ export const gameActionSchema: z.ZodType<GameAction> = z.discriminatedUnion('typ
   z.object({ type: z.literal('move'), unitId: z.string().max(64), to: coordSchema }),
   z.object({ type: z.literal('harvest'), colonyId: z.string().max(64) }),
   z.object({ type: z.literal('drop_unsupplied'), unitIds: z.array(z.string().max(64)).max(200) }),
+  z.object({ type: z.literal('build'), building: z.enum(BUILDING_TYPES), at: coordSchema, to: coordSchema.optional() }),
   z.object({ type: z.literal('end_phase') }),
 ]);
 

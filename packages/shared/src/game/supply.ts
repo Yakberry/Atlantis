@@ -1,4 +1,4 @@
-import { emptyStock, RESOURCES, UNIT_KINDS, type Applied, type GameState, type Result, type Stock, type Unit, type UnitKind } from './model';
+import { emptyStock, RESOURCES, UNIT_KINDS, type Applied, type GameState, type Report, type Result, type Stock, type Unit, type UnitKind } from './model';
 import { fail, ok } from './result';
 
 /** Сколько ресурсов нужно на снабжение этих юнитов и построек. */
@@ -33,6 +33,12 @@ export function isValidDrop(stock: Stock, entities: readonly { id: string; kind:
   return entities.filter((entity) => dropped.has(entity.id)).every((entity) => !covers(stock, supplyNeeds([...remaining, entity])));
 }
 
+/** Запись в журнале снабжения: её видят все игроки (запасы и так известны после фазы). Без трат записи нет. */
+export function supplyReport(state: GameState, playerId: string, spent: Stock, left: Stock): Report[] {
+  if (RESOURCES.every((resource) => spent[resource] === 0)) return [];
+  return [{ audience: state.playerOrder, data: { type: 'supply', playerId, spent, left } }];
+}
+
 /** Игрок с нехваткой выбрал, кто остаётся без снабжения: они удаляются, остальные получают своё. */
 export function dropUnsupplied(state: GameState, playerId: string, unitIds: readonly string[]): Result<Applied> {
   const own = state.units.filter((unit) => unit.ownerId === playerId);
@@ -42,17 +48,20 @@ export function dropUnsupplied(state: GameState, playerId: string, unitIds: read
   const dropped = new Set(unitIds);
   const lost = own.filter((unit) => dropped.has(unit.id));
   const remaining = own.filter((unit) => !dropped.has(unit.id));
+  const needs = supplyNeeds(remaining);
+  const left = pay(stock, needs);
   const isBuilding = (unit: Unit) => UNIT_KINDS[unit.kind].building;
 
   return ok(
     {
       ...state,
       units: state.units.filter((unit) => unit.ownerId !== playerId || !dropped.has(unit.id)),
-      stock: { ...state.stock, [playerId]: pay(stock, supplyNeeds(remaining)) },
+      stock: { ...state.stock, [playerId]: left },
       ready: [...state.ready, playerId],
     },
     [],
     [
+      ...supplyReport(state, playerId, needs, left),
       {
         audience: [playerId],
         data: {

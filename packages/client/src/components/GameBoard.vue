@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { isValidDrop, RESOURCES, supplyNeeds, type Coord, type GameEvent } from '@atlantis/shared';
+import { isValidDrop, RESOURCES, supplyNeeds, type BuildingType, type Coord, type GameEvent, type Phase } from '@atlantis/shared';
 import { computed, ref, watch } from 'vue';
 import { RESOURCE_LABELS } from '../board/palette';
 import { POPUP_MS, type Popup } from '../board/popups';
@@ -69,11 +69,19 @@ const dropIsValid = computed(
 );
 
 // ---------- действия ----------
-const HINTS = {
-  maneuver: 'Выберите юнита и соседнюю локацию суши. Манёвр завершится сам, когда ходить будет некому.',
+const HINTS: Record<Phase, string> = {
+  maneuver: 'Выберите юнита и соседнюю локацию суши (по дороге можно пройти на локацию дальше). Манёвр завершится сам, когда ходить будет некому.',
   supply: '',
-  harvest: 'Нажмите на колонию, чтобы добыть ресурс, или завершите ход: остальные колонии добудут сами. Захваченные не добывают.',
-} as const;
+  build: 'Выберите подсвеченную локацию и постройку в меню внизу. Фаза завершится сама, если строить нечего.',
+  harvest:
+    'Нажмите на колонию, чтобы добыть ресурс: за фазу добывают с одной цепочки колоний, соединённых дорогами. «Завершить ход» добудет с наибольшей цепочки. Захваченные колонии не добывают.',
+};
+const END_LABELS: Record<Phase, string> = {
+  maneuver: 'Завершить манёвр',
+  supply: '',
+  build: 'Завершить строительство',
+  harvest: 'Завершить ход',
+};
 
 const hint = computed(() => {
   if (!game.value) return '';
@@ -86,6 +94,8 @@ const hint = computed(() => {
 const move = (unitId: string, to: Coord) => run(() => store.sendAction({ type: 'move', unitId, to }));
 const harvest = (colonyId: string) =>
   run(async () => showPopups(await store.sendAction({ type: 'harvest', colonyId })));
+const build = (building: BuildingType, at: Coord, to?: Coord) =>
+  run(() => store.sendAction({ type: 'build', building, at, ...(to ? { to } : {}) }));
 const endPhase = () => run(async () => showPopups(await store.sendAction({ type: 'end_phase' })));
 const confirmDrop = () =>
   run(async () => {
@@ -106,6 +116,7 @@ const confirmDrop = () =>
       :unsupplied="unsupplied"
       @move="move"
       @harvest="harvest"
+      @build="build"
       @toggle-supply="toggleSupply"
     />
 
@@ -124,7 +135,7 @@ const confirmDrop = () =>
           <button :disabled="!dropIsValid" @click="confirmDrop">Подтвердить выбор</button>
         </template>
         <button v-else-if="game.phase !== 'supply'" :disabled="store.isReady" @click="endPhase">
-          {{ game.phase === 'maneuver' ? 'Завершить манёвр' : 'Завершить ход' }}
+          {{ END_LABELS[game.phase] }}
         </button>
       </template>
     </div>

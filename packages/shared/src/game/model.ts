@@ -24,20 +24,19 @@ export const STARTING_UNITS = 2;
 /** Сколько единиц ресурса приносит одна добыча (случайно, включая границы). */
 export const HARVEST_MIN = 1;
 export const HARVEST_MAX = 3;
-/** Кубик боя и порог успешной осады колонии. */
+/** Кубик боя. */
 export const DIE_SIDES = 6;
-export const SIEGE_HIT = 4;
 /** Заглушка условия победы: когда счётчик ходов доходит до этого значения, игра заканчивается. */
-export const WIN_TURN = 4;
+export const WIN_TURN = 3;
 
-export const RESOURCES = ['food', 'wood', 'iron', 'marble'] as const;
+export const RESOURCES = ['food', 'wood', 'marble', 'copper'] as const;
 export type Resource = (typeof RESOURCES)[number];
 
 /** Запас игрока: по числу единиц каждого ресурса. */
 export type Stock = Record<Resource, number>;
-export const emptyStock = (): Stock => ({ food: 0, wood: 0, iron: 0, marble: 0 });
+export const emptyStock = (): Stock => ({ food: 0, wood: 0, marble: 0, copper: 0 });
 /** Что получает каждый игрок на старте. */
-export const START_STOCK: Readonly<Stock> = { food: 4, wood: 2, iron: 4, marble: 4 };
+export const START_STOCK: Readonly<Stock> = { food: 4, wood: 2, marble: 4, copper: 4 };
 
 /** Поверхность локации: по суше ходят юниты, по морю будут ходить корабли. */
 export type Terrain = 'land' | 'sea';
@@ -50,12 +49,16 @@ type UnitKindInfo = {
   vision: number;
   mobile: boolean;
   harvests: boolean;
+  /** Колония (обычная или укреплённая): добывает, входит в «цепочки», не больше одной на локацию. */
+  colony: boolean;
   /** Постройка: не бросает кубик в бою, не «захватывает» чужие колонии. */
   building: boolean;
   /** По какой поверхности вид может стоять и двигаться. */
   terrain: Terrain;
   /** Сколько ресурсов вид требует на снабжение каждый ход (любая комбинация). */
   supply: Partial<Stock>;
+  /** Минимальный результат d6, которым осаждающий уничтожает постройку (для не-построек не используется). */
+  siegeHit: number;
 };
 
 /**
@@ -63,17 +66,38 @@ type UnitKindInfo = {
  * видят вокруг себя, участвуют в споре за локацию); различаются свойствами из этой таблицы.
  */
 export const UNIT_KINDS = {
-  unit: { vision: 2, mobile: true, harvests: false, building: false, terrain: 'land', supply: { food: 1, iron: 1 } },
-  colony: { vision: 1, mobile: false, harvests: true, building: true, terrain: 'land', supply: { food: 1 } },
+  unit: {
+    vision: 2, mobile: true, harvests: false, colony: false, building: false, terrain: 'land',
+    supply: { food: 1, copper: 1 }, siegeHit: 4,
+  },
+  colony: {
+    vision: 1, mobile: false, harvests: true, colony: true, building: true, terrain: 'land',
+    supply: { food: 1 }, siegeHit: 4,
+  },
+  fortified_colony: {
+    vision: 1, mobile: false, harvests: true, colony: true, building: true, terrain: 'land',
+    supply: { food: 1 }, siegeHit: 5,
+  },
 } as const satisfies Record<string, UnitKindInfo>;
 export type UnitKind = keyof typeof UNIT_KINDS;
 
-/** Фазы хода, в которых игроки действуют; четвёртая фаза — бой — проходит автоматически в конце хода. */
-export const PHASES = ['maneuver', 'supply', 'harvest'] as const;
+/** Что можно построить на фазе строительства и во сколько это обходится. */
+export const BUILDING_TYPES = ['colony', 'fortified_colony', 'road'] as const;
+export type BuildingType = (typeof BUILDING_TYPES)[number];
+export const BUILDINGS: Record<BuildingType, { cost: Partial<Stock> }> = {
+  colony: { cost: { wood: 1, marble: 1 } },
+  fortified_colony: { cost: { wood: 1, marble: 3 } },
+  road: { cost: { marble: 1 } },
+};
+
+/** Фазы хода, в которых игроки действуют; последняя, бой, проходит автоматически в конце хода. */
+export const PHASES = ['maneuver', 'supply', 'build', 'harvest'] as const;
 export type Phase = (typeof PHASES)[number];
 
 export type Hex = Coord & {
   type: HexType;
+  /** Название локации (у суши); у моря его нет. */
+  name: string | null;
   /** Хоть один юнит побывал здесь к последнему раскрытию манёвра: ресурс суши известен всем, кто её видит. */
   discovered: boolean;
 };
@@ -82,11 +106,18 @@ export type Unit = Coord & {
   id: string;
   ownerId: string;
   kind: UnitKind;
-  /** Уже действовал в этой фазе (двигался на манёвре, добывал на фазе добычи). */
+  /** Больше не может действовать в этой фазе (дошёл до предела шагов на манёвре или добыл на фазе добычи). */
   tired: boolean;
+  /** Сколько шагов сделал на этом манёвре. */
+  steps: number;
+  /** Прошёл по дороге: в этот ход может сделать ещё один шаг. */
+  boosted: boolean;
   /** Где юнита видят противники: обновляется только при раскрытии манёвра. */
   revealed: Coord;
 };
+
+/** Дорога между двумя соседними локациями. */
+export type Road = { id: string; ownerId: string; a: Coord; b: Coord };
 
 export type UnitView = {
   id: string;
@@ -115,6 +146,9 @@ export type GameState = {
   winnerId: string | null;
   hexes: Hex[];
   units: Unit[];
+  roads: Road[];
+  /** Счётчик для идентификаторов новых юнитов, построек и дорог. */
+  nextId: number;
 };
 
 /** Что игрок знает о локации. Скрытая локация — только координаты. */
@@ -122,6 +156,8 @@ export type HexView =
   | (Coord & { visible: false })
   | (Coord & {
       visible: true;
+      /** Название видно у всякой видимой суши; у моря его нет. */
+      name: string | null;
       /** Море видно как море сразу; суша — как суша, но её ресурс неизвестен, пока там никто не побывал. */
       terrain: Terrain;
       /** `null` — для моря и для суши, чей ресурс ещё не изведан ни одним юнитом. */
@@ -133,7 +169,7 @@ export type HexView =
     });
 
 /** Состояние партии глазами одного игрока: без чужих тайн. */
-export type GameView = Omit<GameState, 'hexes' | 'units' | 'stock' | 'shownStock'> & {
+export type GameView = Omit<GameState, 'hexes' | 'units' | 'stock' | 'shownStock' | 'roads' | 'nextId'> & {
   hexes: HexView[];
   /** Ваш запас (актуальный). */
   stock: Stock;
@@ -141,6 +177,12 @@ export type GameView = Omit<GameState, 'hexes' | 'units' | 'stock' | 'shownStock
   rivals: Record<string, Stock>;
   /** Сколько ресурсов нужно на снабжение ваших юнитов и построек прямо сейчас. */
   supply: Stock;
+  /** Дороги, у которых виден хотя бы один конец. */
+  roads: Road[];
+  /** Ваши цепочки колоний (идентификаторы колоний, соединённых вашими дорогами). */
+  chains: string[][];
+  /** Локации, где вы можете строить на этой фазе строительства (иначе пусто). */
+  sites: Coord[];
 };
 
 export type GameAction =
@@ -148,7 +190,9 @@ export type GameAction =
   | { type: 'harvest'; colonyId: string }
   /** Нехватка ресурсов на снабжении: кто остаётся без него (и удаляется). */
   | { type: 'drop_unsupplied'; unitIds: string[] }
-  /** Завершить свою часть текущей фазы (манёвр или добычу). */
+  /** Строительство в локации `at`; для дороги `to` — соседняя локация, к которой она ведёт. */
+  | { type: 'build'; building: BuildingType; at: Coord; to?: Coord }
+  /** Завершить свою часть текущей фазы (манёвр, строительство или добычу). */
   | { type: 'end_phase' };
 
 /** Что произошло в результате действия: сообщается только тому, кто его совершил. */
@@ -157,7 +201,8 @@ export type GameEvent = { type: 'harvested'; unitId: string; resource: Resource;
 export type ReportData =
   | { type: 'battle'; hex: Coord; rolls: Record<string, number[]>; winnerId: string | null; destroyed: number }
   | { type: 'siege'; hex: Coord; attackerId: string; defenderId: string; rolls: number[]; destroyed: boolean }
-  | { type: 'unsupplied'; playerId: string; units: number; buildings: number };
+  | { type: 'unsupplied'; playerId: string; units: number; buildings: number }
+  | { type: 'supply'; playerId: string; spent: Stock; left: Stock };
 
 /** Сообщение для чата, видимое только тем, кому положено знать о событии. */
 export type Report = { audience: string[]; data: ReportData };

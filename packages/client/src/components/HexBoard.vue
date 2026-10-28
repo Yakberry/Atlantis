@@ -1,7 +1,20 @@
 <script setup lang="ts">
-import { distance, isCaptured, UNIT_KINDS, type Coord, type GameView, type HexView, type UnitKind } from '@atlantis/shared';
+import {
+  BUILDING_TYPES,
+  covers,
+  distance,
+  fullCost,
+  isCaptured,
+  sameCell,
+  UNIT_KINDS,
+  type BuildingType,
+  type Coord,
+  type GameView,
+  type HexView,
+  type UnitKind,
+} from '@atlantis/shared';
 import { computed, ref, watch } from 'vue';
-import { boardBounds, COLONY_POINTS, HEX_IMAGE, HEX_POINTS, hexCenter, unitSlot } from '../board/layout';
+import { boardBounds, COLONY_POINTS, FORT_POINTS, HEX_IMAGE, HEX_POINTS, hexCenter, unitSlot } from '../board/layout';
 import {
   CONTESTED_STROKE,
   FOG_FILL,
@@ -18,6 +31,7 @@ import type { Popup } from '../board/popups';
 import { spriteUrl, type SpriteKey } from '../board/sprites';
 import { usePanZoom } from '../composables/usePanZoom';
 import { useSettingsStore } from '../stores/settings';
+import BuildMenu, { type BuildCard } from './BuildMenu.vue';
 
 const props = withDefaults(
   defineProps<{
@@ -34,6 +48,7 @@ const emit = defineEmits<{
   move: [unitId: string, to: Coord];
   harvest: [colonyId: string];
   toggleSupply: [unitId: string];
+  build: [building: BuildingType, at: Coord, to?: Coord];
 }>();
 
 type TileUnit = {
@@ -58,6 +73,7 @@ type TileUnit = {
   captured: boolean;
   tired: boolean;
 };
+type RoadSegment = { x: number; y: number; color: string };
 type Tile = {
   key: string;
   q: number;
@@ -67,11 +83,18 @@ type Tile = {
   fill: string;
   stroke: string;
   dashed: boolean;
-  label: string;
+  /** Название локации и вторая строка (ресурс). */
+  name: string;
+  sub: string;
   title: string;
   /** Картинка локации (если нарисована и включена); иначе рисуем заливку `fill`. */
   sprite: string | undefined;
   targetable: boolean;
+  /** Место для строительства / выбранное место / конец будущей дороги. */
+  site: boolean;
+  siteSelected: boolean;
+  roadTarget: boolean;
+  roads: RoadSegment[];
   units: TileUnit[];
 };
 
@@ -80,10 +103,27 @@ const bounds = computed(() => boardBounds(props.game.hexes));
 const { viewBox, fit, zoomBy, wasDragged, handlers } = usePanZoom(viewport, bounds);
 
 const selectedId = ref<string | null>(null);
+/** Строительство: выбранная локация и режим выбора конца дороги. */
+const siteCell = ref<Coord | null>(null);
+const roadMode = ref(false);
+const clearBuild = () => {
+  siteCell.value = null;
+  roadMode.value = false;
+};
 
 /** Приказы можно отдавать, пока игра идёт и мы не завершили текущую фазу. */
 const canAct = computed(() => !props.game.winnerId && !props.game.ready.includes(props.viewerId));
-watch([canAct, () => props.game.phase], () => (selectedId.value = null));
+watch([canAct, () => props.game.phase], () => {
+  selectedId.value = null;
+  clearBuild();
+});
+
+const keyOf = ({ q, r }: Coord) => `${q},${r}`;
+
+function visibleHex(cell: Coord) {
+  for (const hex of props.game.hexes) if (hex.visible && sameCell(hex, cell)) return hex;
+  return undefined;
+}
 
 /** Выбранный юнит: его вид и локация, в которой он стоит. */
 const selected = computed(() => {
@@ -102,27 +142,103 @@ const settings = useSettingsStore();
 const colorOf = (playerId: string) => playerColor(props.game.slots[playerId] ?? -1);
 const slotIndexes = computed(() => Object.values(props.game.slots));
 
+// ---------- добыча: за фазу можно добывать только с одной цепочки колоний ----------
+const harvestedChain = computed(() => {
+  for (const hex of props.game.hexes) {
+    if (!hex.visible) continue;
+    const done = hex.units.find((u) => u.ownerId === props.viewerId && UNIT_KINDS[u.kind].harvests && u.tired);
+    if (done) return props.game.chains.find((chain) => chain.includes(done.id));
+  }
+  return undefined;
+});
+
+// ---------- строительство ----------
+const siteKeys = computed(() => new Set(props.game.sites.map(keyOf)));
+const siteHex = computed(() => (siteCell.value ? visibleHex(siteCell.value) : undefined));
+
+/** Куда можно провести дорогу из выбранной локации: соседняя разведанная суша без дороги. */
+const roadTargets = computed<Coord[]>(() => {
+  const at = siteCell.value;
+  if (!at) return [];
+  return props.game.hexes
+    .filter((hex) => hex.visible && hex.terrain === 'land' && hex.resource !== null && distance(at, hex) === 1)
+    .filter(
+      (hex) =>
+        !props.game.roads.some(
+          (road) => (sameCell(road.a, at) && sameCell(road.b, hex)) || (sameCell(road.a, hex) && sameCell(road.b, at)),
+        ),
+    )
+    .map(({ q, r }) => ({ q, r }));
+});
+
+const buildCards = computed<BuildCard[]>(() => {
+  const hex = siteHex.value;
+  if (!hex) return [];
+  return BUILDING_TYPES.map((type) => {
+    const cost = fullCost(type);
+    let reason = '';
+    if (!covers(props.game.stock, cost)) reason = 'Не хватает ресурсов';
+    else if (type === 'colony' && hex.units.some((u) => UNIT_KINDS[u.kind].colony)) reason = 'В этой локации уже есть колония';
+    else if (type === 'fortified_colony' && !hex.units.some((u) => u.kind === 'colony' && u.ownerId === props.viewerId)) {
+      reason = 'Нужна ваша обычная колония в этой локации';
+    } else if (type === 'road' && roadTargets.value.length === 0) reason = 'Нет соседней разведанной суши без дороги';
+    return { type, cost, disabled: reason !== '', reason };
+  });
+});
+
+const showBuildMenu = computed(() => props.game.phase === 'build' && canAct.value && siteHex.value !== undefined);
+
+function onPick(type: BuildingType) {
+  const at = siteCell.value;
+  if (!at) return;
+  if (type === 'road') {
+    roadMode.value = !roadMode.value;
+    return;
+  }
+  emit('build', type, at);
+  clearBuild();
+}
+
+// ---------- отрисовка ----------
 const tileSpriteKey = (hex: HexView): SpriteKey => {
   if (!hex.visible) return 'tiles/fog';
   if (hex.terrain === 'sea') return 'tiles/sea';
   return hex.resource ? `tiles/${hex.resource}` : 'tiles/unexplored';
 };
 
-function unitTitle(unit: Pick<TileUnit, 'kind' | 'tired' | 'harvestable' | 'captured' | 'droppable' | 'marked'>): string {
+function unitTitle(
+  unit: Pick<TileUnit, 'kind' | 'tired' | 'harvestable' | 'captured' | 'droppable' | 'marked'> & { chainLocked: boolean },
+): string {
   if (unit.droppable) return unit.marked ? 'Останется без снабжения (нажмите, чтобы отменить)' : 'Нажмите, чтобы оставить без снабжения';
-  if (unit.kind === 'colony') {
-    if (unit.captured) return 'Колония захвачена: добыча невозможна';
-    return unit.tired ? 'Колония уже добывала в этом ходу' : unit.harvestable ? 'Нажмите, чтобы добыть ресурс' : 'Колония';
-  }
-  return unit.tired ? 'Юнит уже ходил в этом ходу' : 'Юнит';
+  if (unit.kind === 'unit') return unit.tired ? 'Юнит уже ходил в этом ходу' : 'Юнит';
+  const name = unit.kind === 'fortified_colony' ? 'Укреплённая колония' : 'Колония';
+  if (unit.captured) return `${name} захвачена: добыча невозможна`;
+  if (unit.chainLocked) return `${name} из другой цепочки: за фазу добывают с одной`;
+  if (unit.tired) return `${name} уже добывала в этом ходу`;
+  return unit.harvestable ? 'Нажмите, чтобы добыть ресурс' : name;
 }
+
+/** Половины дорог для каждой плитки: от центра плитки до середины общей грани. */
+const roadsByTile = computed(() => {
+  const map = new Map<string, RoadSegment[]>();
+  const add = (cell: Coord, segment: RoadSegment) => map.set(keyOf(cell), [...(map.get(keyOf(cell)) ?? []), segment]);
+  for (const road of props.game.roads) {
+    const a = hexCenter(road.a);
+    const b = hexCenter(road.b);
+    const color = colorOf(road.ownerId);
+    add(road.a, { x: (b.x - a.x) / 2, y: (b.y - a.y) / 2, color });
+    add(road.b, { x: (a.x - b.x) / 2, y: (a.y - b.y) / 2, color });
+  }
+  return map;
+});
 
 function toTile(hex: HexView): Tile {
   const { q, r } = hex;
   const { x, y } = hexCenter(hex);
+  const key = keyOf(hex);
   const base = {
     sprite: settings.simpleTiles ? undefined : spriteUrl(tileSpriteKey(hex)),
-    key: `${q},${r}`,
+    key,
     q,
     r,
     x,
@@ -134,30 +250,38 @@ function toTile(hex: HexView): Tile {
       hex.visible &&
       hex.terrain === UNIT_KINDS[selected.value.kind].terrain &&
       distance(selected.value.hex, hex) === 1,
+    site: siteKeys.value.has(key),
+    siteSelected: siteCell.value !== null && sameCell(siteCell.value, hex),
+    roadTarget: roadMode.value && roadTargets.value.some((cell) => sameCell(cell, hex)),
+    roads: roadsByTile.value.get(key) ?? [],
   };
 
   if (!hex.visible) {
-    return { ...base, fill: FOG_FILL, stroke: FOG_STROKE, dashed: false, label: '', title: `Неизвестно (${q}, ${r})`, units: [] };
+    return { ...base, fill: FOG_FILL, stroke: FOG_STROKE, dashed: false, name: '', sub: '', title: 'Неизвестно', units: [] };
   }
-  const label = hex.terrain === 'sea' ? '' : hex.resource ? RESOURCE_LABELS[hex.resource] : UNKNOWN_LABEL;
+  const sub = hex.terrain === 'sea' || !hex.resource ? '' : RESOURCE_LABELS[hex.resource];
+  const name = hex.name ?? '';
   return {
     ...base,
     fill: hex.terrain === 'sea' ? SEA_FILL : hex.resource ? RESOURCE_COLORS[hex.resource] : UNKNOWN_FILL,
     stroke: hex.contested ? CONTESTED_STROKE : hex.ownerId ? colorOf(hex.ownerId) : FREE_STROKE,
     dashed: hex.contested,
-    label,
-    title: `${label || 'Море'} (${q}, ${r})`,
+    name,
+    sub,
+    title: hex.terrain === 'sea' ? 'Море' : hex.resource ? `${name} — ${sub}` : name,
     units: hex.units.map((unit) => {
       const info = UNIT_KINDS[unit.kind];
       const mine = unit.ownerId === props.viewerId;
       // «Готов»: свой и ещё не использовал своё действие в этой фазе.
       const idle = mine && canAct.value && !unit.tired;
       const captured = info.harvests && isCaptured(unit.ownerId, hex.units);
+      const harvestPhase = idle && props.game.phase === 'harvest' && info.harvests && !captured;
+      const chainLocked = harvestPhase && harvestedChain.value !== undefined && !harvestedChain.value.includes(unit.id);
       const part = {
         kind: unit.kind,
         tired: unit.tired === true,
         captured,
-        harvestable: idle && props.game.phase === 'harvest' && info.harvests && !captured,
+        harvestable: harvestPhase && !chainLocked,
         droppable: props.picking && mine,
         marked: props.unsupplied.includes(unit.id),
       };
@@ -168,7 +292,7 @@ function toTile(hex: HexView): Tile {
         color: colorOf(unit.ownerId),
         slot,
         sprite: slot === null ? undefined : spriteUrl(`units/${unit.kind}`),
-        title: unitTitle(part),
+        title: unitTitle({ ...part, chainLocked }),
         selected: unit.id === selectedId.value,
         selectable: idle && props.game.phase === 'maneuver' && info.mobile,
       };
@@ -225,6 +349,21 @@ function onUnitClick(unit: TileUnit, event: MouseEvent) {
 
 function onTileClick(tile: Tile) {
   if (wasDragged()) return;
+
+  if (props.game.phase === 'build' && canAct.value) {
+    const at = siteCell.value;
+    if (at && roadMode.value && tile.roadTarget) {
+      emit('build', 'road', at, { q: tile.q, r: tile.r });
+      clearBuild();
+    } else if (tile.site) {
+      siteCell.value = { q: tile.q, r: tile.r };
+      roadMode.value = false;
+    } else {
+      clearBuild();
+    }
+    return;
+  }
+
   if (selectedId.value && tile.targetable) emit('move', selectedId.value, { q: tile.q, r: tile.r });
   selectedId.value = null;
 }
@@ -255,7 +394,7 @@ function onTileClick(tile: Tile) {
         v-for="tile in tiles"
         :key="tile.key"
         :transform="`translate(${tile.x} ${tile.y})`"
-        :class="{ target: tile.targetable }"
+        :class="{ target: tile.targetable || tile.site || tile.roadTarget }"
         @click="onTileClick(tile)"
       >
         <title>{{ tile.title }}</title>
@@ -268,7 +407,13 @@ function onTileClick(tile: Tile) {
           stroke-width="4"
           stroke-linejoin="round"
         />
-        <polygon v-if="tile.targetable" :points="HEX_POINTS" class="target-overlay" />
+        <!-- Дороги: половина от центра этой плитки до общей грани, вторую половину рисует соседняя -->
+        <g v-for="(segment, i) in tile.roads" :key="i" class="road">
+          <line x1="0" y1="0" :x2="segment.x" :y2="segment.y" class="road-casing" />
+          <line x1="0" y1="0" :x2="segment.x" :y2="segment.y" class="road-line" :stroke="segment.color" />
+        </g>
+        <polygon v-if="tile.targetable || tile.roadTarget" :points="HEX_POINTS" class="target-overlay" />
+        <polygon v-if="tile.site" :points="HEX_POINTS" :class="['site-overlay', { chosen: tile.siteSelected }]" />
         <g
           v-for="(unit, i) in tile.units"
           :key="unit.id"
@@ -292,11 +437,13 @@ function onTileClick(tile: Tile) {
             <circle r="14" class="shape backdrop" />
             <image :href="unit.sprite" x="-13" y="-13" width="26" height="26" :filter="`url(#tint-${unit.slot})`" />
           </template>
+          <polygon v-else-if="unit.kind === 'fortified_colony'" :points="FORT_POINTS" :fill="unit.color" class="shape fort" />
           <polygon v-else-if="unit.kind === 'colony'" :points="COLONY_POINTS" :fill="unit.color" class="shape" />
           <circle v-else r="11" :fill="unit.color" class="shape" />
           <title>{{ unit.title }}</title>
         </g>
-        <text y="30" class="tile-label">{{ tile.label }}</text>
+        <text v-if="tile.name" y="21" class="tile-name">{{ tile.name }}</text>
+        <text v-if="tile.sub" y="33" class="tile-sub">{{ tile.sub }}</text>
       </g>
       <g v-for="floater in floaters" :key="floater.id" :transform="`translate(${floater.x} ${floater.y})`">
         <g class="floater">
@@ -310,5 +457,13 @@ function onTileClick(tile: Tile) {
       <button class="secondary" type="button" aria-label="Отдалить" @click="zoomBy(1 / 1.4)">−</button>
       <button class="secondary" type="button" aria-label="Показать всю карту" @click="fit">⌖</button>
     </div>
+    <BuildMenu
+      v-if="showBuildMenu"
+      :title="`Строительство: «${siteHex?.name ?? ''}»`"
+      :cards="buildCards"
+      :road-mode="roadMode"
+      @pick="onPick"
+      @close="clearBuild"
+    />
   </div>
 </template>

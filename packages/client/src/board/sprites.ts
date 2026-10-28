@@ -1,11 +1,12 @@
-import type { Resource, UnitKind } from '@atlantis/shared';
+import type { BuildingType, Resource, UnitKind } from '@atlantis/shared';
 import { reactive } from 'vue';
 
 /** Ключ спрайта — путь внутри `assets/sprites` без расширения. */
 export type SpriteKey =
   | `tiles/${Resource | 'sea' | 'unexplored' | 'fog'}`
   | `resources/${Resource}`
-  | `units/${UnitKind}`;
+  | `units/${UnitKind}`
+  | `buildings/${BuildingType}`;
 
 const files = import.meta.glob<string>('../assets/sprites/**/*.{png,svg}', {
   query: '?url',

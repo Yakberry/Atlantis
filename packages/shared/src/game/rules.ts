@@ -1,7 +1,9 @@
 import { generateLand, surroundWithSea } from './board';
+import { build } from './build';
 import { sameCell } from './hex';
 import { harvestColony, harvestRemaining } from './harvest';
 import { markDiscovered, moveUnit } from './maneuver';
+import { LOCATION_NAMES } from './names';
 import {
   RESOURCES,
   START_STOCK,
@@ -27,9 +29,13 @@ export function createGame(playerIds: string[], settings: GameSettings, rng: Rng
   // `mapSize` — число клеток суши; вся суша окружена морем (контур и внутренние заливы).
   const { mainland, islands } = generateLand(settings, rng);
   const land = [...mainland, ...islands];
+
+  // Уникальные названия суши в случайном порядке (море безымянное).
+  const names = shuffle([...new Set(LOCATION_NAMES)], rng);
+  if (names.length < land.length) throw new Error('В списке названий локаций меньше, чем клеток суши');
   const board: Hex[] = [
-    ...land.map((cell) => ({ ...cell, type: pick(RESOURCES, rng), discovered: false })),
-    ...surroundWithSea(land).map((cell) => ({ ...cell, type: 'sea' as const, discovered: false })),
+    ...land.map((cell, i) => ({ ...cell, type: pick(RESOURCES, rng), name: names[i] ?? null, discovered: false })),
+    ...surroundWithSea(land).map((cell) => ({ ...cell, type: 'sea' as const, name: null, discovered: false })),
   ];
 
   // У каждого игрока своя случайная стартовая локация (разные для всех): там колония и стартовые юниты.
@@ -47,6 +53,8 @@ export function createGame(playerIds: string[], settings: GameSettings, rng: Rng
       q,
       r,
       tired: false,
+      steps: 0,
+      boosted: false,
       revealed: { q, r },
     });
     return [spawn('colony'), ...Array.from({ length: STARTING_UNITS }, () => spawn('unit'))];
@@ -64,6 +72,8 @@ export function createGame(playerIds: string[], settings: GameSettings, rng: Rng
     winnerId: null,
     hexes: markDiscovered(board, units),
     units,
+    roads: [],
+    nextId: serial + 1,
   };
   return settle(state, rng).state;
 }
@@ -100,9 +110,14 @@ function perform(state: GameState, playerId: string, action: GameAction, rng: Rn
       if (state.phase !== 'supply') return fail('Сейчас не фаза снабжения');
       return dropUnsupplied(state, playerId, action.unitIds);
 
+    case 'build':
+      if (state.phase !== 'build') return fail('Строить можно только на фазе строительства');
+      return build(state, playerId, action);
+
     case 'end_phase':
       switch (state.phase) {
         case 'maneuver':
+        case 'build':
           return ok({ ...state, ready: [...state.ready, playerId] });
         case 'harvest': {
           const { state: harvested, events } = harvestRemaining(state, playerId, rng);
@@ -132,6 +147,7 @@ export function removePlayer(
     stock: without(state.stock),
     shownStock: without(state.shownStock),
     units: state.units.filter((unit) => unit.ownerId !== playerId),
+    roads: state.roads.filter((road) => road.ownerId !== playerId),
   };
 
   if (playerOrder.length <= 1) return { state: { ...next, winnerId: playerOrder[0] ?? null }, reports: [] };

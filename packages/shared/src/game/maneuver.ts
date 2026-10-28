@@ -2,6 +2,7 @@ import { distance, neighbors, sameCell, type Coord } from './hex';
 import { terrainOf, UNIT_KINDS, type Applied, type GameState, type Hex, type Result, type Unit } from './model';
 import type { Rng } from './random';
 import { fail, ok } from './result';
+import { roadBetween } from './roads';
 
 const key = ({ q, r }: Coord) => `${q},${r}`;
 
@@ -23,7 +24,10 @@ export function legalSteps(state: GameState, unit: Unit): Coord[] {
 /** Юнит ещё может пойти в этом манёвре. */
 export const canStillMove = (state: GameState, unit: Unit): boolean => !unit.tired && legalSteps(state, unit).length > 0;
 
-/** Юнит переходит в соседнюю локацию сразу (для владельца), противники узнают об этом при раскрытии манёвра. */
+/**
+ * Юнит переходит в соседнюю локацию сразу (для владельца), противники узнают об этом при раскрытии манёвра.
+ * За манёвр юнит делает один шаг; если хоть раз прошёл по дороге (любого игрока), может сделать ещё один.
+ */
 export function moveUnit(state: GameState, playerId: string, unitId: string, to: Coord): Result<Applied> {
   const unit = state.units.find((u) => u.id === unitId && u.ownerId === playerId);
   if (!unit) return fail('Это не ваш юнит');
@@ -34,9 +38,12 @@ export function moveUnit(state: GameState, playerId: string, unitId: string, to:
   if (UNIT_KINDS[unit.kind].terrain !== terrainOf(target.type)) return fail('Сюда этот юнит пройти не может');
   if (distance(unit, to) !== 1) return fail('Можно перейти только в соседнюю локацию');
 
+  const boosted = unit.boosted || roadBetween(state.roads, unit, to) !== undefined;
+  const steps = unit.steps + 1;
+  const tired = steps >= (boosted ? 2 : 1);
   return ok({
     ...state,
-    units: state.units.map((u) => (u.id === unit.id ? { ...u, q: to.q, r: to.r, tired: true } : u)),
+    units: state.units.map((u) => (u.id === unit.id ? { ...u, q: to.q, r: to.r, steps, boosted, tired } : u)),
   });
 }
 
@@ -65,7 +72,7 @@ export function resolveManeuver(state: GameState, rng: Rng): GameState {
 
   const units = state.units.map((unit) => {
     const at = meeting.get(unit.id) ?? unit;
-    return { ...unit, q: at.q, r: at.r, revealed: { q: at.q, r: at.r }, tired: false };
+    return { ...unit, q: at.q, r: at.r, revealed: { q: at.q, r: at.r }, tired: false, steps: 0, boosted: false };
   });
   return { ...state, units, hexes: markDiscovered(state.hexes, units) };
 }

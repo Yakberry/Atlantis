@@ -1,16 +1,17 @@
 import { resolveBattles } from './battle';
+import { canBuildAnything } from './build';
 import { canHarvest } from './harvest';
 import { canStillMove, resolveManeuver } from './maneuver';
 import { emptyStock, WIN_TURN, type GameState, type Report, type Stock } from './model';
 import type { Rng } from './random';
-import { covers, pay, supplyNeeds } from './supply';
+import { covers, pay, supplyNeeds, supplyReport } from './supply';
 
 /** Предохранитель: за одно действие не может пройти больше шагов, чем сыграть за партию. */
 const MAX_STEPS = 100;
 
 /**
  * Двигает ход вперёд, пока есть кому его двигать: игроки, которым в фазе нечего делать, готовы сами;
- * когда готовы все, фаза заканчивается и начинается следующая. Бой (фаза 4) проходит сразу после добычи.
+ * когда готовы все, фаза заканчивается и начинается следующая. Бой (последняя фаза) проходит сразу после добычи.
  */
 export function settle(state: GameState, rng: Rng): { state: GameState; reports: Report[] } {
   const reports: Report[] = [];
@@ -39,6 +40,8 @@ function hasWork(state: GameState, playerId: string): boolean {
   switch (state.phase) {
     case 'maneuver':
       return own.some((unit) => canStillMove(state, unit));
+    case 'build':
+      return canBuildAnything(state, playerId);
     case 'harvest':
       return own.some((unit) => canHarvest(state, unit));
     case 'supply':
@@ -48,33 +51,38 @@ function hasWork(state: GameState, playerId: string): boolean {
 
 function advance(state: GameState, rng: Rng): { state: GameState; reports: Report[] } {
   switch (state.phase) {
-    case 'maneuver':
-      return { state: reveal(enterSupply(resolveManeuver(state, rng))), reports: [] };
+    case 'maneuver': {
+      const entered = enterSupply(resolveManeuver(state, rng));
+      return { state: reveal(entered.state), reports: entered.reports };
+    }
     case 'supply':
+      return { state: reveal({ ...state, phase: 'build', ready: [] }), reports: [] };
+    case 'build':
       return { state: reveal({ ...state, phase: 'harvest', ready: [] }), reports: [] };
     case 'harvest': {
       const { state: fought, reports } = resolveBattles(state, rng);
       // Новый ход: все снова могут действовать.
-      const units = fought.units.map((unit) => ({ ...unit, tired: false }));
+      const units = fought.units.map((unit) => ({ ...unit, tired: false, steps: 0, boosted: false }));
       const next = { ...fought, units, phase: 'maneuver' as const, ready: [], turn: fought.turn + 1 };
       return { state: reveal(checkTurnLimit(next)), reports };
     }
   }
 }
 
-/** Начало снабжения: тем, кому хватает ресурсов, снабжение оплачивается сразу. */
-function enterSupply(state: GameState): GameState {
+/** Начало снабжения: тем, кому хватает ресурсов, снабжение оплачивается сразу (и попадает в журнал). */
+function enterSupply(state: GameState): { state: GameState; reports: Report[] } {
   const stock = { ...state.stock };
   const ready: string[] = [];
+  const reports: Report[] = [];
   for (const id of state.playerOrder) {
     const needs = supplyNeeds(state.units.filter((unit) => unit.ownerId === id));
     const mine = stock[id] ?? emptyStock();
-    if (covers(mine, needs)) {
-      stock[id] = pay(mine, needs);
-      ready.push(id);
-    }
+    if (!covers(mine, needs)) continue;
+    stock[id] = pay(mine, needs);
+    ready.push(id);
+    reports.push(...supplyReport(state, id, needs, stock[id]));
   }
-  return { ...state, phase: 'supply', stock, ready };
+  return { state: { ...state, phase: 'supply', stock, ready }, reports };
 }
 
 /** Запасы, которые видят все, обновляются после каждой фазы. */

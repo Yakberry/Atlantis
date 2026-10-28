@@ -3,8 +3,8 @@ import type { Resource } from '@atlantis/shared';
 export const RESOURCE_COLORS: Record<Resource, string> = {
   food: '#C59137',
   wood: '#4F9153',
-  iron: '#894927',
   marble: '#d9dee6',
+  copper: '#894927',
 };
 
 export { RESOURCE_LABELS } from '@atlantis/shared';
@@ -22,4 +22,4 @@ export const SEA_FILL = '#1f6fa3';
 
 /** Локация видна, но её тип ещё никто не изведал. Светлее «тумана», чтобы их не путать. */
 export const UNKNOWN_FILL = '#566b71';
-export const UNKNOWN_LABEL = 'Неизведано';
+export const UNKNOWN_LABEL = ' ';

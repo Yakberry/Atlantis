@@ -3,7 +3,7 @@ import { PHASES, type Phase } from '@atlantis/shared';
 
 defineProps<{ phase: Phase; turn: number }>();
 
-const LABELS: Record<Phase, string> = { maneuver: 'Манёвр', supply: 'Снабжение', harvest: 'Добыча' };
+const LABELS: Record<Phase, string> = { maneuver: 'Манёвр', supply: 'Снабжение', build: 'Строительство', harvest: 'Добыча' };
 </script>
 
 <template>
@@ -12,6 +12,6 @@ const LABELS: Record<Phase, string> = { maneuver: 'Манёвр', supply: 'Сн�
     <li v-for="(item, index) in PHASES" :key="item" :class="{ current: item === phase }" :aria-current="item === phase ? 'step' : undefined">
       {{ index + 1 }}. {{ LABELS[item] }}
     </li>
-    <li title="Проходит автоматически после добычи">4. Бой</li>
+    <li title="Проходит автоматически после добычи">{{ PHASES.length + 1 }}. Бой</li>
   </ol>
 </template>
