@@ -5,6 +5,13 @@
 //   2. cd /tmp/smoke/out && echo '{"type":"module"}' > package.json
 //      sed -i -E "s#from '(\./[a-z]+)'#from '\1.js'#g" *.js
 //   3. скопировать этот файл в /tmp/smoke/out/test.mjs и выполнить: node test.mjs
+// Smoke-тест логики игры (фазы, снабжение, бои, разъезд, приватность, случайные партии).
+// Как запускать без сети (пути адаптировать под своё окружение):
+//   1. tsc: tsconfig с extends ../../tsconfig.base.json, noEmit:false, outDir:/tmp/smoke/out,
+//      rootDir:packages/shared/src/game, include:packages/shared/src/game/*.ts
+//   2. cd /tmp/smoke/out && echo '{"type":"module"}' > package.json
+//      sed -i -E "s#from '(\./[a-z]+)'#from '\1.js'#g" *.js
+//   3. скопировать этот файл в /tmp/smoke/out/test.mjs и выполнить: node test.mjs
 import assert from 'node:assert/strict';
 import * as G from './index.js';
 import { resolveBattles } from './battle.js';
@@ -23,7 +30,7 @@ const soldiers = (s, p) => s.units.filter((u) => u.ownerId === p && u.kind === '
 const hexAt = (s, c) => s.hexes.find((h) => G.sameCell(h, c));
 const isLand = (s, c) => hexAt(s, c) && hexAt(s, c).type !== 'sea';
 const place = (s, id, c) => ({ ...s, units: s.units.map((u) => (u.id === id ? { ...u, q: c.q, r: c.r, revealed: { q: c.q, r: c.r } } : u)) });
-const unit = (id, ownerId, kind, c) => ({ id, ownerId, kind, q: c.q, r: c.r, tired: false, steps: 0, boosted: false, revealed: { q: c.q, r: c.r } });
+const unit = (id, ownerId, kind, c) => ({ id, ownerId, kind, shownKind: kind, fresh: false, q: c.q, r: c.r, tired: false, steps: 0, boosted: false, revealed: { q: c.q, r: c.r } });
 const discover = (s, ...cells) => ({ ...s, hexes: s.hexes.map((h) => (cells.some((c) => G.sameCell(c, h)) ? { ...h, discovered: true } : h)) });
 const endAll = (s, players) => players.reduce((acc, p) => (acc.ready.includes(p) ? acc : act(acc, p, { type: 'end_phase' }).state), s);
 /** Партия на фазе строительства. */
@@ -128,7 +135,7 @@ assert.ok(bad({ ...known, stock: { ...known.stock, a: { food: 0, wood: 0, marble
 assert.ok(bad(fresh(['a', 'b']), 'a', { type: 'build', building: 'colony', at: aHome }).includes('фазе строительства'));
 console.log('4. строительство: условия места (разведана, контроль/соседство, спорная, захваченная), колония, укрепление, цены — ок');
 
-// ---------- 5. дороги ----------
+// ---------- 5. дороги: общие, оба конца — доступные места ----------
 const withRoad = act(known, 'a', { type: 'build', building: 'road', at: aHome, to: N });
 assert.equal(withRoad.state.roads.length, 1); assert.equal(withRoad.state.stock.a.marble, 3, 'цена: 1 мрамор');
 assert.ok(bad(withRoad.state, 'a', { type: 'build', building: 'road', at: aHome, to: N }).includes('где её ещё нет'), 'дубль');
@@ -138,11 +145,44 @@ const far = known.hexes.find((h) => h.type !== 'sea' && G.distance(h, aHome) >= 
 assert.ok(bad(known, 'a', { type: 'build', building: 'road', at: aHome, to: far }).length > 0, 'только к соседней');
 const seaCell = G.neighbors(aHome).find((n) => hexAt(base, n) && hexAt(base, n).type === 'sea');
 if (seaCell) assert.ok(bad(discover(known, seaCell), 'a', { type: 'build', building: 'road', at: aHome, to: seaCell }).length > 0, 'по морю нельзя');
+// второй конец тоже должен быть доступен для строительства (захваченная/спорная/чужая локация — нет)
+const endP = G.neighbors(aHome).find((n) => isLand(known, n) && !G.sameCell(n, N) && G.canBuildAt(discover(known, n), 'a', n));
+if (endP) {
+  const knownP = discover(known, endP);
+  assert.ok(G.roadTargets(knownP, 'a', aHome).some((c) => G.sameCell(c, endP)), 'свободная разведанная соседка — конец дороги');
+  const takenP = place(knownP, soldiers(knownP, 'b')[0].id, endP);
+  assert.ok(!G.roadTargets(takenP, 'a', aHome).some((c) => G.sameCell(c, endP)), 'захваченная локация — не конец дороги');
+  assert.ok(bad(takenP, 'a', { type: 'build', building: 'road', at: aHome, to: endP }).includes('доступными вам'), 'дорогу в недоступную локацию строить нельзя');
+}
 const unknownNeighbor = G.neighbors(aHome).find((n) => isLand(base, n) && !hexAt(known, n).discovered);
 if (unknownNeighbor) assert.ok(bad(known, 'a', { type: 'build', building: 'road', at: aHome, to: unknownNeighbor }).length > 0, 'к неразведанной локации нельзя');
 // дорога видна тем, кто видит хотя бы один её конец
 assert.equal(G.viewFor(withRoad.state, 'a').roads.length, 1);
-console.log('5. дорога: цена, соседняя разведанная суша, без дублей — ок');
+console.log('5. дорога: цена, без дублей, оба конца — доступные для строительства места — ок');
+
+// ---------- 5б. новые постройки и дороги скрыты от других до конца строительства ----------
+const watcher = G.neighbors(N).find((n) => isLand(known, n) && !G.sameCell(n, aHome));
+const watched = watcher ? place(known, soldiers(known, 'b')[0].id, watcher) : known;   // юнит b рядом с N: видит её
+assert.ok(!watcher || G.canSee(watched, 'b', N), 'наблюдатель видит локацию');
+const builtNew = act(watched, 'a', { type: 'build', building: 'colony', at: N }).state;
+const builtRoad = act(builtNew, 'a', { type: 'build', building: 'road', at: aHome, to: N }).state;
+const unitsIn = (v) => v.hexes.flatMap((h) => (h.visible ? h.units : []));
+const newId = builtRoad.units.find((u) => u.fresh).id;
+assert.ok(unitsIn(G.viewFor(builtRoad, 'a')).some((u) => u.id === newId), 'владелец видит новую колонию');
+assert.ok(!unitsIn(G.viewFor(builtRoad, 'b')).some((u) => u.id === newId), 'противник новую колонию не видит');
+assert.equal(G.viewFor(builtRoad, 'a').roads.length, 1, 'владелец видит новую дорогу');
+assert.equal(G.viewFor(builtRoad, 'b').roads.length, 0, 'противник новую дорогу не видит');
+const kindsSeen = (st, viewer) => unitsIn(G.viewFor(st, viewer)).filter((u) => u.ownerId === 'a' && G.UNIT_KINDS[u.kind].colony).map((u) => u.kind);
+const hiddenUpgrade = act(watched, 'a', { type: 'build', building: 'fortified_colony', at: aHome }).state;
+assert.deepEqual(kindsSeen(hiddenUpgrade, 'a'), ['fortified_colony']);
+assert.ok(!kindsSeen(hiddenUpgrade, 'b').includes('fortified_colony'), 'об укреплении противник не знает до конца фазы');
+const opened = endAll(builtRoad, ['a', 'b']);
+assert.equal(opened.phase, 'harvest');
+assert.ok(opened.units.every((u) => !u.fresh && u.shownKind === u.kind) && opened.roads.every((rd) => !rd.fresh), 'конец фазы открывает всё');
+assert.ok(unitsIn(G.viewFor(opened, 'b')).some((u) => u.id === newId), 'после фазы противник видит новую колонию');
+assert.equal(G.viewFor(opened, 'b').roads.length, 1, 'и дорогу');
+assert.ok(endAll(hiddenUpgrade, ['a', 'b']).units.some((u) => u.kind === 'fortified_colony' && u.shownKind === 'fortified_colony'));
+console.log('5б. новые постройки и дороги скрыты до конца фазы строительства, улучшение выглядит прежним — ок');
 
 // ---------- 6. дороги и движение ----------
 let move = endAll(act(withRoad.state, 'b', { type: 'end_phase' }).state, ['a']);   // дальше манёвр нового хода достигнем ниже
@@ -151,7 +191,7 @@ const mv = fresh(['a', 'b'], 3);
 const mHome = { q: colony(mv, 'a').q, r: colony(mv, 'a').r };
 const M1 = G.neighbors(mHome).find((n) => isLand(mv, n));
 const M2 = G.neighbors(M1).find((n) => isLand(mv, n) && !G.sameCell(n, mHome));
-const road = (id, owner, a, b) => ({ id, ownerId: owner, a, b });
+const road = (id, owner, a, b, freshFlag = false) => ({ id, ownerId: owner, a, b, fresh: freshFlag });
 const hero = soldiers(mv, 'a')[0];
 let t = { ...mv, roads: [road('r1', 'b', mHome, M1)] };            // дорогу построил ДРУГОЙ игрок: ходить по ней можно
 t = act(t, 'a', { type: 'move', unitId: hero.id, to: M1 }).state;
@@ -204,9 +244,10 @@ assert.equal(both.events.length, 2, 'в одной цепочке добываю
 const third = { ...hv, roads: [road('r', 'a', H, N)], units: [...hv.units, unit('far', 'a', 'colony', { q: N.q + 7, r: N.r + 7 })] };
 const biggest = act(third, 'a', { type: 'end_phase' }, () => 0.5);
 assert.deepEqual(biggest.events.map((e) => e.unitId).sort(), [cHome.id, cN.id].sort(), 'автодобыча берёт наибольшую цепочку');
-// чужая дорога цепочку не образует
+// дороги общие: цепочку образует и дорога, построенная другим игроком
 const foreignRoad = { ...hv, roads: [road('r', 'b', H, N)] };
-assert.equal(G.viewFor(foreignRoad, 'a').chains.length, 2, 'цепочки образуют только собственные дороги');
+assert.equal(G.viewFor(foreignRoad, 'a').chains.length, 1, 'дороги общие: цепочку образует и чужая дорога');
+assert.equal(act(foreignRoad, 'a', { type: 'end_phase' }, () => 0.5).events.length, 2, 'добывают обе колонии цепочки');
 console.log('7. цепочки: дороги объединяют колонии, за фазу — одна цепочка, автодобыча берёт наибольшую, чужие дороги не считаются — ок');
 
 // ---------- 8. осада и укреплённая колония ----------
@@ -279,7 +320,7 @@ for (let seed = 1; seed <= 150; seed++) {
         const options = [];
         for (const site of G.buildSites(g, p)) {
           options.push({ type: 'build', building: 'colony', at: site }, { type: 'build', building: 'fortified_colony', at: site });
-          for (const to of G.roadTargets(g, site)) options.push({ type: 'build', building: 'road', at: site, to });
+          for (const to of G.roadTargets(g, p, site)) options.push({ type: 'build', building: 'road', at: site, to });
         }
         action = options.find((o) => G.applyAction(g, p, o).ok && rng() < 0.5) ?? options.find((o) => G.applyAction(g, p, o).ok) ?? action;
         if (action.type === 'build') { builds++; if (action.building === 'road') roadsBuilt++; }

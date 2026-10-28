@@ -52,6 +52,8 @@ export function createGame(playerIds: string[], settings: GameSettings, rng: Rng
       kind,
       q,
       r,
+      shownKind: kind,
+      fresh: false,
       tired: false,
       steps: 0,
       boosted: false,
@@ -147,7 +149,6 @@ export function removePlayer(
     stock: without(state.stock),
     shownStock: without(state.shownStock),
     units: state.units.filter((unit) => unit.ownerId !== playerId),
-    roads: state.roads.filter((road) => road.ownerId !== playerId),
   };
 
   if (playerOrder.length <= 1) return { state: { ...next, winnerId: playerOrder[0] ?? null }, reports: [] };

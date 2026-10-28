@@ -57,8 +57,12 @@ function advance(state: GameState, rng: Rng): { state: GameState; reports: Repor
     }
     case 'supply':
       return { state: reveal({ ...state, phase: 'build', ready: [] }), reports: [] };
-    case 'build':
-      return { state: reveal({ ...state, phase: 'harvest', ready: [] }), reports: [] };
+    case 'build': {
+      // Конец строительства: новые постройки и дороги становятся видны всем.
+      const units = state.units.map((unit) => ({ ...unit, fresh: false, shownKind: unit.kind }));
+      const roads = state.roads.map((road) => ({ ...road, fresh: false }));
+      return { state: reveal({ ...state, units, roads, phase: 'harvest', ready: [] }), reports: [] };
+    }
     case 'harvest': {
       const { state: fought, reports } = resolveBattles(state, rng);
       // Новый ход: все снова могут действовать.

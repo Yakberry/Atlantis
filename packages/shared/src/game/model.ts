@@ -81,6 +81,7 @@ export const UNIT_KINDS = {
 } as const satisfies Record<string, UnitKindInfo>;
 export type UnitKind = keyof typeof UNIT_KINDS;
 
+
 /** Что можно построить на фазе строительства и во сколько это обходится. */
 export const BUILDING_TYPES = ['colony', 'fortified_colony', 'road'] as const;
 export type BuildingType = (typeof BUILDING_TYPES)[number];
@@ -94,6 +95,7 @@ export const BUILDINGS: Record<BuildingType, { cost: Partial<Stock> }> = {
 export const PHASES = ['maneuver', 'supply', 'build', 'harvest'] as const;
 export type Phase = (typeof PHASES)[number];
 
+
 export type Hex = Coord & {
   type: HexType;
   /** Название локации (у суши); у моря его нет. */
@@ -106,6 +108,10 @@ export type Unit = Coord & {
   id: string;
   ownerId: string;
   kind: UnitKind;
+  /** Вид, который видят противники: при улучшении колонии до конца фазы строительства остаётся прежним. */
+  shownKind: UnitKind;
+  /** Построено в эту фазу строительства: противники не видят до её конца. */
+  fresh: boolean;
   /** Больше не может действовать в этой фазе (дошёл до предела шагов на манёвре или добыл на фазе добычи). */
   tired: boolean;
   /** Сколько шагов сделал на этом манёвре. */
@@ -116,8 +122,16 @@ export type Unit = Coord & {
   revealed: Coord;
 };
 
-/** Дорога между двумя соседними локациями. */
-export type Road = { id: string; ownerId: string; a: Coord; b: Coord };
+/** Дорога между двумя соседними локациями. Общая: пользоваться ею может любой игрок. */
+export type Road = {
+  id: string;
+  /** Кто построил. */
+  ownerId: string;
+  a: Coord;
+  b: Coord;
+  /** Построена в эту фазу строительства: противники не видят до её конца. */
+  fresh: boolean;
+};
 
 export type UnitView = {
   id: string;
@@ -177,9 +191,9 @@ export type GameView = Omit<GameState, 'hexes' | 'units' | 'stock' | 'shownStock
   rivals: Record<string, Stock>;
   /** Сколько ресурсов нужно на снабжение ваших юнитов и построек прямо сейчас. */
   supply: Stock;
-  /** Дороги, у которых виден хотя бы один конец. */
+  /** Дороги, у которых виден хотя бы один конец (общие для всех игроков). */
   roads: Road[];
-  /** Ваши цепочки колоний (идентификаторы колоний, соединённых вашими дорогами). */
+  /** Ваши цепочки колоний (идентификаторы колоний, соединённых дорогами). */
   chains: string[][];
   /** Локации, где вы можете строить на этой фазе строительства (иначе пусто). */
   sites: Coord[];

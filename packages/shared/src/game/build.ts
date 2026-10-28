@@ -14,6 +14,7 @@ import {
   type UnitKind,
 } from './model';
 import { fail, ok } from './result';
+import { roadBetween } from './roads';
 import { covers, pay } from './supply';
 
 type BuildAction = Extract<GameAction, { type: 'build' }>;
@@ -51,15 +52,9 @@ export function canBuildAt(state: GameState, playerId: string, cell: Coord): boo
 export const buildSites = (state: GameState, playerId: string): Coord[] =>
   state.hexes.filter((hex) => canBuildAt(state, playerId, hex)).map(({ q, r }) => ({ q, r }));
 
-/** Куда можно провести дорогу из этой локации: соседняя разведанная суша, где такой дороги ещё нет. */
-export function roadTargets(state: GameState, from: Coord): Coord[] {
-  return neighbors(from).filter((next) => {
-    const hex = hexAt(state, next);
-    const exists = state.roads.some(
-      (road) => (sameCell(road.a, from) && sameCell(road.b, next)) || (sameCell(road.a, next) && sameCell(road.b, from)),
-    );
-    return hex !== undefined && hex.type !== 'sea' && hex.discovered && !exists;
-  });
+/** Куда можно провести дорогу из этой локации: соседняя локация, доступная игроку для строительства, где дороги ещё нет. */
+export function roadTargets(state: GameState, playerId: string, from: Coord): Coord[] {
+  return neighbors(from).filter((next) => canBuildAt(state, playerId, next) && !roadBetween(state.roads, from, next));
 }
 
 /** Есть ли у игрока хоть одна постройка, которую он может сейчас построить (иначе фаза для него пропускается). */
@@ -72,14 +67,17 @@ export function canBuildAnything(state: GameState, playerId: string): boolean {
     (affordable('colony') && sites.some((cell) => !hasColony(entitiesAt(state, cell)))) ||
     (affordable('fortified_colony') &&
       sites.some((cell) => entitiesAt(state, cell).some((u) => u.kind === 'colony' && u.ownerId === playerId))) ||
-    (affordable('road') && sites.some((cell) => roadTargets(state, cell).length > 0))
+    (affordable('road') && sites.some((cell) => roadTargets(state, playerId, cell).length > 0))
   );
 }
 
+/** Новая постройка скрыта от противников до конца фазы строительства (`fresh`). */
 const spawn = (state: GameState, kind: UnitKind, ownerId: string, cell: Coord): Unit => ({
   id: `${kind}-${state.nextId}`,
   ownerId,
   kind,
+  shownKind: kind,
+  fresh: true,
   q: cell.q,
   r: cell.r,
   tired: false,
@@ -107,17 +105,29 @@ export function build(state: GameState, playerId: string, action: BuildAction): 
     case 'fortified_colony': {
       const colony = here.find((unit) => unit.kind === 'colony' && unit.ownerId === playerId);
       if (!colony) return fail('Укреплённую колонию можно построить только поверх своей колонии');
-      const upgraded: Unit = { ...spawn(state, 'fortified_colony', playerId, at), tired: colony.tired };
+      // Улучшение для противников остаётся обычной колонией до конца фазы строительства.
+      const upgraded: Unit = {
+        ...spawn(state, 'fortified_colony', playerId, at),
+        shownKind: colony.shownKind,
+        fresh: colony.fresh,
+        tired: colony.tired,
+      };
       return ok({ ...next, units: state.units.map((unit) => (unit.id === colony.id ? upgraded : unit)) });
     }
 
     case 'road': {
       const { to } = action;
       if (!to || distance(at, to) !== 1) return fail('Выберите соседнюю локацию, к которой пойдёт дорога');
-      if (!roadTargets(state, at).some((cell) => sameCell(cell, to))) {
-        return fail('Дорогу можно проложить только в соседнюю разведанную локацию суши, где её ещё нет');
+      if (!roadTargets(state, playerId, at).some((cell) => sameCell(cell, to))) {
+        return fail('Дорогу можно проложить только между двумя локациями, доступными вам для строительства, где её ещё нет');
       }
-      const road = { id: `road-${state.nextId}`, ownerId: playerId, a: { q: at.q, r: at.r }, b: { q: to.q, r: to.r } };
+      const road = {
+        id: `road-${state.nextId}`,
+        ownerId: playerId,
+        a: { q: at.q, r: at.r },
+        b: { q: to.q, r: to.r },
+        fresh: true,
+      };
       return ok({ ...next, roads: [...state.roads, road] });
     }
   }

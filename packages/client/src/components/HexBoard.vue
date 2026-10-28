@@ -73,7 +73,6 @@ type TileUnit = {
   captured: boolean;
   tired: boolean;
 };
-type RoadSegment = { x: number; y: number; color: string };
 type Tile = {
   key: string;
   q: number;
@@ -94,7 +93,6 @@ type Tile = {
   site: boolean;
   siteSelected: boolean;
   roadTarget: boolean;
-  roads: RoadSegment[];
   units: TileUnit[];
 };
 
@@ -156,19 +154,14 @@ const harvestedChain = computed(() => {
 const siteKeys = computed(() => new Set(props.game.sites.map(keyOf)));
 const siteHex = computed(() => (siteCell.value ? visibleHex(siteCell.value) : undefined));
 
-/** Куда можно провести дорогу из выбранной локации: соседняя разведанная суша без дороги. */
+const roadExists = (a: Coord, b: Coord) =>
+  props.game.roads.some((road) => (sameCell(road.a, a) && sameCell(road.b, b)) || (sameCell(road.a, b) && sameCell(road.b, a)));
+
+/** Куда можно провести дорогу из выбранной локации: соседнее место, доступное для строительства, где дороги ещё нет. */
 const roadTargets = computed<Coord[]>(() => {
   const at = siteCell.value;
   if (!at) return [];
-  return props.game.hexes
-    .filter((hex) => hex.visible && hex.terrain === 'land' && hex.resource !== null && distance(at, hex) === 1)
-    .filter(
-      (hex) =>
-        !props.game.roads.some(
-          (road) => (sameCell(road.a, at) && sameCell(road.b, hex)) || (sameCell(road.a, hex) && sameCell(road.b, at)),
-        ),
-    )
-    .map(({ q, r }) => ({ q, r }));
+  return props.game.sites.filter((cell) => distance(at, cell) === 1 && !roadExists(at, cell));
 });
 
 const buildCards = computed<BuildCard[]>(() => {
@@ -181,7 +174,7 @@ const buildCards = computed<BuildCard[]>(() => {
     else if (type === 'colony' && hex.units.some((u) => UNIT_KINDS[u.kind].colony)) reason = 'В этой локации уже есть колония';
     else if (type === 'fortified_colony' && !hex.units.some((u) => u.kind === 'colony' && u.ownerId === props.viewerId)) {
       reason = 'Нужна ваша обычная колония в этой локации';
-    } else if (type === 'road' && roadTargets.value.length === 0) reason = 'Нет соседней разведанной суши без дороги';
+    } else if (type === 'road' && roadTargets.value.length === 0) reason = 'Нет соседней локации, доступной для строительства, без дороги';
     return { type, cost, disabled: reason !== '', reason };
   });
 });
@@ -218,19 +211,19 @@ function unitTitle(
   return unit.harvestable ? 'Нажмите, чтобы добыть ресурс' : name;
 }
 
-/** Половины дорог для каждой плитки: от центра плитки до середины общей грани. */
-const roadsByTile = computed(() => {
-  const map = new Map<string, RoadSegment[]>();
-  const add = (cell: Coord, segment: RoadSegment) => map.set(keyOf(cell), [...(map.get(keyOf(cell)) ?? []), segment]);
-  for (const road of props.game.roads) {
+/** Дорога — небольшой прямоугольник на общей грани двух локаций, вытянутый вдоль линии между их центрами. */
+const roadRects = computed(() =>
+  props.game.roads.map((road) => {
     const a = hexCenter(road.a);
     const b = hexCenter(road.b);
-    const color = colorOf(road.ownerId);
-    add(road.a, { x: (b.x - a.x) / 2, y: (b.y - a.y) / 2, color });
-    add(road.b, { x: (a.x - b.x) / 2, y: (a.y - b.y) / 2, color });
-  }
-  return map;
-});
+    return {
+      id: road.id,
+      x: (a.x + b.x) / 2,
+      y: (a.y + b.y) / 2,
+      angle: (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI,
+    };
+  }),
+);
 
 function toTile(hex: HexView): Tile {
   const { q, r } = hex;
@@ -253,13 +246,12 @@ function toTile(hex: HexView): Tile {
     site: siteKeys.value.has(key),
     siteSelected: siteCell.value !== null && sameCell(siteCell.value, hex),
     roadTarget: roadMode.value && roadTargets.value.some((cell) => sameCell(cell, hex)),
-    roads: roadsByTile.value.get(key) ?? [],
   };
 
   if (!hex.visible) {
     return { ...base, fill: FOG_FILL, stroke: FOG_STROKE, dashed: false, name: '', sub: '', title: 'Неизвестно', units: [] };
   }
-  const sub = hex.terrain === 'sea' || !hex.resource ? '' : RESOURCE_LABELS[hex.resource];
+  const sub = hex.terrain === 'sea' ? '' : hex.resource ? RESOURCE_LABELS[hex.resource] : UNKNOWN_LABEL;
   const name = hex.name ?? '';
   return {
     ...base,
@@ -268,7 +260,7 @@ function toTile(hex: HexView): Tile {
     dashed: hex.contested,
     name,
     sub,
-    title: hex.terrain === 'sea' ? 'Море' : hex.resource ? `${name} — ${sub}` : name,
+    title: hex.terrain === 'sea' ? 'Море' : `${name} — ${sub}`,
     units: hex.units.map((unit) => {
       const info = UNIT_KINDS[unit.kind];
       const mine = unit.ownerId === props.viewerId;
@@ -407,11 +399,6 @@ function onTileClick(tile: Tile) {
           stroke-width="4"
           stroke-linejoin="round"
         />
-        <!-- Дороги: половина от центра этой плитки до общей грани, вторую половину рисует соседняя -->
-        <g v-for="(segment, i) in tile.roads" :key="i" class="road">
-          <line x1="0" y1="0" :x2="segment.x" :y2="segment.y" class="road-casing" />
-          <line x1="0" y1="0" :x2="segment.x" :y2="segment.y" class="road-line" :stroke="segment.color" />
-        </g>
         <polygon v-if="tile.targetable || tile.roadTarget" :points="HEX_POINTS" class="target-overlay" />
         <polygon v-if="tile.site" :points="HEX_POINTS" :class="['site-overlay', { chosen: tile.siteSelected }]" />
         <g
@@ -444,6 +431,14 @@ function onTileClick(tile: Tile) {
         </g>
         <text v-if="tile.name" y="21" class="tile-name">{{ tile.name }}</text>
         <text v-if="tile.sub" y="33" class="tile-sub">{{ tile.sub }}</text>
+      </g>
+      <g
+        v-for="road in roadRects"
+        :key="road.id"
+        class="road"
+        :transform="`translate(${road.x} ${road.y}) rotate(${road.angle})`"
+      >
+        <rect x="-13" y="-5" width="26" height="10" rx="2" />
       </g>
       <g v-for="floater in floaters" :key="floater.id" :transform="`translate(${floater.x} ${floater.y})`">
         <g class="floater">

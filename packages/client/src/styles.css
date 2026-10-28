@@ -186,8 +186,7 @@ button.secondary { background: transparent; border-color: var(--line); color: va
 .site-overlay { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-dasharray: 5 4; pointer-events: none; filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.85)); }
 .site-overlay.chosen { fill: rgba(232, 192, 125, 0.22); stroke-dasharray: none; stroke-width: 3.5; }
 .road { pointer-events: none; }
-.road-casing { stroke: rgba(0, 0, 0, 0.55); stroke-width: 10; stroke-linecap: round; }
-.road-line { stroke-width: 6; stroke-linecap: round; }
+.road rect { fill: #c9b27c; stroke: rgba(0, 0, 0, 0.65); stroke-width: 1.5; }
 .unit .fort { stroke-width: 4; }
 
 .build-menu {
