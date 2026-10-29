@@ -32,6 +32,7 @@ import { spriteUrl, type SpriteKey } from '../board/sprites';
 import { usePanZoom } from '../composables/usePanZoom';
 import { useSettingsStore } from '../stores/settings';
 import BuildMenu, { type BuildCard } from './BuildMenu.vue';
+import UnitIcon from "./UnitIcon.vue";
 
 const props = withDefaults(
   defineProps<{
@@ -376,11 +377,6 @@ function onTileClick(tile: Tile) {
     >
       <defs>
         <clipPath id="hex-clip"><polygon :points="HEX_POINTS" /></clipPath>
-        <!-- Окраска одноцветных иконок в цвет игрока: берём только форму (альфа-канал) иконки. -->
-        <filter v-for="slot in slotIndexes" :id="`tint-${slot}`" :key="slot" color-interpolation-filters="sRGB">
-          <feFlood :flood-color="playerColor(slot)" result="color" />
-          <feComposite in="color" in2="SourceAlpha" operator="in" />
-        </filter>
       </defs>
       <g
         v-for="tile in tiles"
@@ -421,8 +417,10 @@ function onTileClick(tile: Tile) {
         >
           <circle v-if="(unit.selectable || unit.harvestable) && !unit.selected" r="17" class="halo" />
           <template v-if="unit.sprite">
-            <circle r="14" class="shape backdrop" />
-            <image :href="unit.sprite" x="-13" y="-13" width="26" height="26" :filter="`url(#tint-${unit.slot})`" />
+            <circle v-if="settings.simpleTiles" r="14" class="shape backdrop" />
+            <foreignObject x="-13" y="-13" width="26" height="26">
+              <UnitIcon :src="unit.sprite" :color="playerColor(unit.slot)" />
+            </foreignObject>
           </template>
           <polygon v-else-if="unit.kind === 'fortified_colony'" :points="FORT_POINTS" :fill="unit.color" class="shape fort" />
           <polygon v-else-if="unit.kind === 'colony'" :points="COLONY_POINTS" :fill="unit.color" class="shape" />
