@@ -25,6 +25,7 @@ for (const [path, url] of Object.entries(files)) {
   };
   image.src = url;
 }
+console.log(loaded);
 
 /** Адрес спрайта, если он нарисован и загрузился; иначе `undefined`: тогда рисуем запасной вариант. */
 export const spriteUrl = (key: SpriteKey): string | undefined => loaded[key];

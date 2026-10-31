@@ -5,6 +5,7 @@ import {
   distance,
   fullCost,
   isCaptured,
+  roadBetween,
   sameCell,
   UNIT_KINDS,
   type BuildingType,
@@ -14,7 +15,7 @@ import {
   type UnitKind,
 } from '@atlantis/shared';
 import { computed, ref, watch } from 'vue';
-import { boardBounds, COLONY_POINTS, FORT_POINTS, HEX_IMAGE, HEX_POINTS, hexCenter, unitSlot } from '../board/layout';
+import { boardBounds, COLONY_POINTS, FORT_POINTS, HEX_IMAGE, HEX_POINTS, hexCenter, RIDER_POINTS, unitSlot } from '../board/layout';
 import {
   CONTESTED_STROKE,
   FOG_FILL,
@@ -72,6 +73,8 @@ type TileUnit = {
   marked: boolean;
   /** Колония, в локации которой стоят чужие юниты. */
   captured: boolean;
+  /** Столкнулся с чужими юнитами: до конца хода не ходит. */
+  blocked: boolean;
   tired: boolean;
 };
 type Tile = {
@@ -201,10 +204,14 @@ const tileSpriteKey = (hex: HexView): SpriteKey => {
 };
 
 function unitTitle(
-  unit: Pick<TileUnit, 'kind' | 'tired' | 'harvestable' | 'captured' | 'droppable' | 'marked'> & { chainLocked: boolean },
+  unit: Pick<TileUnit, 'kind' | 'tired' | 'harvestable' | 'captured' | 'blocked' | 'droppable' | 'marked'> & { chainLocked: boolean },
 ): string {
   if (unit.droppable) return unit.marked ? 'Останется без снабжения (нажмите, чтобы отменить)' : 'Нажмите, чтобы оставить без снабжения';
-  if (unit.kind === 'unit') return unit.tired ? 'Юнит уже ходил в этом ходу' : 'Юнит';
+  if (!UNIT_KINDS[unit.kind].building) {
+    const name = unit.kind === 'rider' ? 'Всадник' : 'Юнит';
+    if (unit.blocked) return `${name} столкнулся с чужими юнитами и до конца хода не ходит`;
+    return unit.tired ? `${name} уже ходил на этом этапе` : name;
+  }
   const name = unit.kind === 'fortified_colony' ? 'Укреплённая колония' : 'Колония';
   if (unit.captured) return `${name} захвачена: добыча невозможна`;
   if (unit.chainLocked) return `${name} из другой цепочки: за фазу добывают с одной`;
@@ -243,7 +250,8 @@ function toTile(hex: HexView): Tile {
       selected.value !== undefined &&
       hex.visible &&
       hex.terrain === UNIT_KINDS[selected.value.kind].terrain &&
-      distance(selected.value.hex, hex) === 1,
+      distance(selected.value.hex, hex) === 1 &&
+      (props.game.stage !== 'roads' || roadBetween(props.game.roads, selected.value.hex, hex) !== undefined),
     site: siteKeys.value.has(key),
     siteSelected: siteCell.value !== null && sameCell(siteCell.value, hex),
     roadTarget: roadMode.value && roadTargets.value.some((cell) => sameCell(cell, hex)),
@@ -261,7 +269,7 @@ function toTile(hex: HexView): Tile {
     dashed: hex.contested,
     name,
     sub,
-    title: hex.terrain === 'sea' ? 'Море' : `${name} — ${sub}`,
+    title: hex.terrain === 'sea' ? 'Море' : hex.resource ? `${name} — ${sub}` : name,
     units: hex.units.map((unit) => {
       const info = UNIT_KINDS[unit.kind];
       const mine = unit.ownerId === props.viewerId;
@@ -274,6 +282,7 @@ function toTile(hex: HexView): Tile {
         kind: unit.kind,
         tired: unit.tired === true,
         captured,
+        blocked: unit.blocked === true,
         harvestable: harvestPhase && !chainLocked,
         droppable: props.picking && mine,
         marked: props.unsupplied.includes(unit.id),
@@ -287,7 +296,9 @@ function toTile(hex: HexView): Tile {
         sprite: slot === null ? undefined : spriteUrl(`units/${unit.kind}`),
         title: unitTitle({ ...part, chainLocked }),
         selected: unit.id === selectedId.value,
-        selectable: idle && props.game.phase === 'maneuver' && info.mobile,
+        // На этапе «всадники» ходят только быстрые юниты; столкнувшиеся не ходят до конца хода.
+        selectable:
+          idle && props.game.phase === 'maneuver' && info.mobile && unit.blocked !== true && (props.game.stage !== 'riders' || info.fast),
       };
     }),
   };
@@ -410,6 +421,7 @@ function onTileClick(tile: Tile) {
               selected: unit.selected,
               marked: unit.marked,
               captured: unit.captured,
+              blocked: unit.blocked,
               tired: unit.tired,
             },
           ]"
@@ -417,13 +429,13 @@ function onTileClick(tile: Tile) {
         >
           <circle v-if="(unit.selectable || unit.harvestable) && !unit.selected" r="17" class="halo" />
           <template v-if="unit.sprite">
-            <circle v-if="settings.simpleTiles" r="14" class="shape backdrop" />
             <foreignObject x="-13" y="-13" width="26" height="26">
               <UnitIcon :src="unit.sprite" :color="playerColor(unit.slot)" />
             </foreignObject>
           </template>
           <polygon v-else-if="unit.kind === 'fortified_colony'" :points="FORT_POINTS" :fill="unit.color" class="shape fort" />
           <polygon v-else-if="unit.kind === 'colony'" :points="COLONY_POINTS" :fill="unit.color" class="shape" />
+          <polygon v-else-if="unit.kind === 'rider'" :points="RIDER_POINTS" :fill="unit.color" class="shape" />
           <circle v-else r="11" :fill="unit.color" class="shape" />
           <title>{{ unit.title }}</title>
         </g>

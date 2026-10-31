@@ -35,6 +35,9 @@ export function boardBounds(cells: Coord[]): Bounds {
 /** Силуэт колонии (домик) вокруг точки (0, 0); юниты — круги радиуса 11. */
 export const COLONY_POINTS = '-11,-1 0,-12 11,-1 11,10 -11,10';
 
+/** Силуэт всадника (ромб). */
+export const RIDER_POINTS = '0,-13 12,0 0,13 -12,0';
+
 /** Силуэт укреплённой колонии (щит). */
 export const FORT_POINTS = '-11,-10 11,-10 11,3 0,12 -11,3';
 

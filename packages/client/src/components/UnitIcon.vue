@@ -4,6 +4,7 @@ import { computed, getCurrentInstance } from 'vue'
 const props = defineProps({
   src:   { type: String, required: true }, // data:image/svg+xml,...
   color: { type: String, default: '#808080' },
+  stroke: { type: String, default: '#808080' },
 })
 
 // Vue 3.5+: const uid = useId()
@@ -33,6 +34,7 @@ const html = computed(() => {
   // 1) Базовая заливка → currentColor (её и задаёт :style="{ color }")
   svg.querySelectorAll('.player-fill').forEach(el => {
     el.setAttribute('fill', 'currentColor')
+    // el.setAttribute('stroke', 'black')
   })
 
   // 2) Уникальные id — иначе у всех юнитов на карте один и тот же filter id

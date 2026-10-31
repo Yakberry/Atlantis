@@ -19,8 +19,6 @@ export const DEFAULT_MAP_STYLE: MapStyle = 'solid';
 /** Настройки карты, которые выбирает хост. `mapSize` — число клеток суши (море добавляется сверху). */
 export type GameSettings = { mapSize: number; mapStyle: MapStyle };
 
-/** Подвижных юнитов у каждого игрока на старте (помимо колонии). */
-export const STARTING_UNITS = 2;
 /** Сколько единиц ресурса приносит одна добыча (случайно, включая границы). */
 export const HARVEST_MIN = 1;
 export const HARVEST_MAX = 3;
@@ -48,6 +46,8 @@ type UnitKindInfo = {
   /** Дальность обзора в локациях. */
   vision: number;
   mobile: boolean;
+  /** Повышенная скорость: ходит на этапе манёвра «Всадники». */
+  fast: boolean;
   harvests: boolean;
   /** Колония (обычная или укреплённая): добывает, входит в «цепочки», не больше одной на локацию. */
   colony: boolean;
@@ -67,19 +67,26 @@ type UnitKindInfo = {
  */
 export const UNIT_KINDS = {
   unit: {
-    vision: 2, mobile: true, harvests: false, colony: false, building: false, terrain: 'land',
+    vision: 2, mobile: true, fast: false, harvests: false, colony: false, building: false, terrain: 'land',
+    supply: { food: 1, copper: 1 }, siegeHit: 4,
+  },
+  rider: {
+    vision: 2, mobile: true, fast: true, harvests: false, colony: false, building: false, terrain: 'land',
     supply: { food: 1, copper: 1 }, siegeHit: 4,
   },
   colony: {
-    vision: 1, mobile: false, harvests: true, colony: true, building: true, terrain: 'land',
+    vision: 1, mobile: false, fast: false, harvests: true, colony: true, building: true, terrain: 'land',
     supply: { food: 1 }, siegeHit: 4,
   },
   fortified_colony: {
-    vision: 1, mobile: false, harvests: true, colony: true, building: true, terrain: 'land',
+    vision: 1, mobile: false, fast: false, harvests: true, colony: true, building: true, terrain: 'land',
     supply: { food: 1 }, siegeHit: 5,
   },
 } as const satisfies Record<string, UnitKindInfo>;
 export type UnitKind = keyof typeof UNIT_KINDS;
+
+/** Что у игрока на старте, помимо колонии: обычный юнит и всадник. */
+export const STARTING_KINDS: readonly UnitKind[] = ['unit', 'rider'];
 
 
 /** Что можно построить на фазе строительства и во сколько это обходится. */
@@ -94,6 +101,16 @@ export const BUILDINGS: Record<BuildingType, { cost: Partial<Stock> }> = {
 /** Фазы хода, в которых игроки действуют; последняя, бой, проходит автоматически в конце хода. */
 export const PHASES = ['maneuver', 'supply', 'build', 'harvest'] as const;
 export type Phase = (typeof PHASES)[number];
+
+/**
+ * Этапы манёвра. После каждого сервер синхронизирует ход: показывает перемещения всем и разбирает столкновения.
+ * - `riders`: ходят только юниты с повышенной скоростью;
+ * - `roads`: любой юнит может сделать шаг, но только по дороге;
+ * - `march`: любой юнит может сделать шаг как обычно.
+ * На каждом этапе юнит делает не больше одного шага; этап пропускается, если ходить некому.
+ */
+export const MANEUVER_STAGES = ['riders', 'roads', 'march'] as const;
+export type ManeuverStage = (typeof MANEUVER_STAGES)[number];
 
 
 export type Hex = Coord & {
@@ -112,12 +129,10 @@ export type Unit = Coord & {
   shownKind: UnitKind;
   /** Построено в эту фазу строительства: противники не видят до её конца. */
   fresh: boolean;
-  /** Больше не может действовать в этой фазе (дошёл до предела шагов на манёвре или добыл на фазе добычи). */
+  /** Уже действовал на этом этапе манёвра или добыл на фазе добычи. */
   tired: boolean;
-  /** Сколько шагов сделал на этом манёвре. */
-  steps: number;
-  /** Прошёл по дороге: в этот ход может сделать ещё один шаг. */
-  boosted: boolean;
+  /** Столкнулся с юнитами другого игрока: до конца хода двигаться не может. */
+  blocked: boolean;
   /** Где юнита видят противники: обновляется только при раскрытии манёвра. */
   revealed: Coord;
 };
@@ -139,6 +154,7 @@ export type UnitView = {
   kind: UnitKind;
   /** Известно только владельцу юнита. */
   tired?: boolean;
+  blocked?: boolean;
 };
 
 /**
@@ -151,7 +167,9 @@ export type GameState = {
   slots: Record<string, number>;
   turn: number;
   phase: Phase;
-  /** Игроки, завершившие текущую фазу (или те, кому в ней нечего делать). */
+  /** Этап манёвра (имеет смысл в фазе манёвра). */
+  stage: ManeuverStage;
+  /** Игроки, завершившие текущую фазу или этап манёвра (или те, кому в ней нечего делать). */
   ready: string[];
   /** Запасы ресурсов по игрокам, актуальные. */
   stock: Record<string, Stock>;
@@ -206,7 +224,7 @@ export type GameAction =
   | { type: 'drop_unsupplied'; unitIds: string[] }
   /** Строительство в локации `at`; для дороги `to` — соседняя локация, к которой она ведёт. */
   | { type: 'build'; building: BuildingType; at: Coord; to?: Coord }
-  /** Завершить свою часть текущей фазы (манёвр, строительство или добычу). */
+  /** Завершить свою часть текущей фазы (этап манёвра, строительство или добычу). */
   | { type: 'end_phase' };
 
 /** Что произошло в результате действия: сообщается только тому, кто его совершил. */

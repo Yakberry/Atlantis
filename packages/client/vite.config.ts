@@ -6,6 +6,7 @@ import path from 'node:path';
 const server = 'http://localhost:3000';
 
 export default defineConfig({
+  build: { assetsInlineLimit: 32 * 1024 },
   plugins: [
     vue(),
     svgLoader({

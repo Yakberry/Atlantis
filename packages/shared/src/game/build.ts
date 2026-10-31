@@ -81,8 +81,7 @@ const spawn = (state: GameState, kind: UnitKind, ownerId: string, cell: Coord): 
   q: cell.q,
   r: cell.r,
   tired: false,
-  steps: 0,
-  boosted: false,
+  blocked: false,
   revealed: { q: cell.q, r: cell.r },
 });
 

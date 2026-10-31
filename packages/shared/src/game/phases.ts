@@ -1,8 +1,8 @@
 import { resolveBattles } from './battle';
 import { canBuildAnything } from './build';
 import { canHarvest } from './harvest';
-import { canStillMove, resolveManeuver } from './maneuver';
-import { emptyStock, WIN_TURN, type GameState, type Report, type Stock } from './model';
+import { canStillMove, syncManeuver } from './maneuver';
+import { emptyStock, MANEUVER_STAGES, WIN_TURN, type GameState, type Report, type Stock } from './model';
 import type { Rng } from './random';
 import { covers, pay, supplyNeeds, supplyReport } from './supply';
 
@@ -52,7 +52,11 @@ function hasWork(state: GameState, playerId: string): boolean {
 function advance(state: GameState, rng: Rng): { state: GameState; reports: Report[] } {
   switch (state.phase) {
     case 'maneuver': {
-      const entered = enterSupply(resolveManeuver(state, rng));
+      // Конец этапа: синхронизация, затем следующий этап или, если этапы кончились, снабжение.
+      const synced = syncManeuver(state, rng);
+      const following = MANEUVER_STAGES[MANEUVER_STAGES.indexOf(synced.stage) + 1];
+      if (following) return { state: { ...synced, stage: following, ready: [] }, reports: [] };
+      const entered = enterSupply(synced);
       return { state: reveal(entered.state), reports: entered.reports };
     }
     case 'supply':
@@ -66,8 +70,8 @@ function advance(state: GameState, rng: Rng): { state: GameState; reports: Repor
     case 'harvest': {
       const { state: fought, reports } = resolveBattles(state, rng);
       // Новый ход: все снова могут действовать.
-      const units = fought.units.map((unit) => ({ ...unit, tired: false, steps: 0, boosted: false }));
-      const next = { ...fought, units, phase: 'maneuver' as const, ready: [], turn: fought.turn + 1 };
+      const units = fought.units.map((unit) => ({ ...unit, tired: false, blocked: false }));
+      const next = { ...fought, units, phase: 'maneuver' as const, stage: 'riders' as const, ready: [], turn: fought.turn + 1 };
       return { state: reveal(checkTurnLimit(next)), reports };
     }
   }

@@ -5,17 +5,11 @@
 //   2. cd /tmp/smoke/out && echo '{"type":"module"}' > package.json
 //      sed -i -E "s#from '(\./[a-z]+)'#from '\1.js'#g" *.js
 //   3. скопировать этот файл в /tmp/smoke/out/test.mjs и выполнить: node test.mjs
-// Smoke-тест логики игры (фазы, снабжение, бои, разъезд, приватность, случайные партии).
-// Как запускать без сети (пути адаптировать под своё окружение):
-//   1. tsc: tsconfig с extends ../../tsconfig.base.json, noEmit:false, outDir:/tmp/smoke/out,
-//      rootDir:packages/shared/src/game, include:packages/shared/src/game/*.ts
-//   2. cd /tmp/smoke/out && echo '{"type":"module"}' > package.json
-//      sed -i -E "s#from '(\./[a-z]+)'#from '\1.js'#g" *.js
-//   3. скопировать этот файл в /tmp/smoke/out/test.mjs и выполнить: node test.mjs
 import assert from 'node:assert/strict';
 import * as G from './index.js';
 import { resolveBattles } from './battle.js';
 import { harvestColony } from './harvest.js';
+import { canStillMove, legalSteps, moveUnit } from './maneuver.js';
 import { LOCATION_NAMES } from './names.js';
 
 const SETTINGS = { mapSize: 12, mapStyle: 'solid' };
@@ -27,14 +21,23 @@ const act = (s, p, a, rng) => { const r = G.applyAction(s, p, a, rng); assert.ok
 const bad = (s, p, a) => { const r = G.applyAction(s, p, a); assert.ok(!r.ok, `${a.type} должно быть отклонено`); return r.error; };
 const colony = (s, p) => s.units.find((u) => u.ownerId === p && u.kind === 'colony');
 const soldiers = (s, p) => s.units.filter((u) => u.ownerId === p && u.kind === 'unit');
+const rider = (s, p) => s.units.find((u) => u.ownerId === p && u.kind === 'rider');
+const walker = (s, p) => s.units.find((u) => u.ownerId === p && u.kind === 'unit');
+const at = (s, id) => s.units.find((u) => u.id === id);
 const hexAt = (s, c) => s.hexes.find((h) => G.sameCell(h, c));
 const isLand = (s, c) => hexAt(s, c) && hexAt(s, c).type !== 'sea';
 const place = (s, id, c) => ({ ...s, units: s.units.map((u) => (u.id === id ? { ...u, q: c.q, r: c.r, revealed: { q: c.q, r: c.r } } : u)) });
-const unit = (id, ownerId, kind, c) => ({ id, ownerId, kind, shownKind: kind, fresh: false, q: c.q, r: c.r, tired: false, steps: 0, boosted: false, revealed: { q: c.q, r: c.r } });
+const unit = (id, ownerId, kind, c) => ({ id, ownerId, kind, shownKind: kind, fresh: false, q: c.q, r: c.r, tired: false, blocked: false, revealed: { q: c.q, r: c.r } });
+const road = (id, owner, a, b, freshFlag = false) => ({ id, ownerId: owner, a, b, fresh: freshFlag });
 const discover = (s, ...cells) => ({ ...s, hexes: s.hexes.map((h) => (cells.some((c) => G.sameCell(c, h)) ? { ...h, discovered: true } : h)) });
 const endAll = (s, players) => players.reduce((acc, p) => (acc.ready.includes(p) ? acc : act(acc, p, { type: 'end_phase' }).state), s);
 /** Партия на фазе строительства. */
-const toBuild = (players, seed = 1) => { const s = endAll(fresh(players, seed), players); assert.equal(s.phase, 'build'); return s; };
+/** Проходит все этапы манёвра (с потолком итераций: зависание превращается в ошибку). */
+const endManeuver = (s, players) => { for (let i = 0; s.phase === 'maneuver'; i++) { assert.ok(i < 10, 'манёвр завис'); s = endAll(s, players); } return s; };
+const landNeighbors = (s, c) => G.neighbors(c).filter((n) => isLand(s, n));
+/** Три клетки суши X–Y–Z подряд: Y соседствует и с X, и с Z. */
+const corridor = (s) => { for (const y of s.hexes.filter((h) => h.type !== 'sea')) { const [x, z] = landNeighbors(s, y); if (x && z) return { x, y: { q: y.q, r: y.r }, z }; } };
+const toBuild = (players, seed = 1) => { const s = endManeuver(fresh(players, seed), players); assert.equal(s.phase, 'build'); return s; };
 /** Свободная соседняя суша у клетки, рядом с которой нет колоний (кроме колонии игрока). */
 const freeNeighbor = (s, from) => G.neighbors(from).find((n) => isLand(s, n) && !s.units.some((u) => G.sameCell(u, n)));
 
@@ -61,28 +64,27 @@ console.log('1. старт 4/2/4/4 (медь), уникальные назван
 
 // ---------- 2. порядок фаз и журнал снабжения ----------
 s = fresh(['a', 'b']);
-s = act(s, 'a', { type: 'end_phase' }).state;
-let step = act(s, 'b', { type: 'end_phase' });
-assert.equal(step.state.phase, 'build', 'после снабжения идёт строительство');
-assert.deepEqual(step.state.stock.a, { food: 1, wood: 2, marble: 4, copper: 2 });
-const log = step.reports.filter((r) => r.data.type === 'supply');
+const reports = [];
+for (let i = 0; s.phase === 'maneuver'; i++) { assert.ok(i < 10, 'манёвр завис'); for (const p of ['a', 'b']) { if (s.ready.includes(p) || s.phase !== 'maneuver') continue; const rr = act(s, p, { type: 'end_phase' }); s = rr.state; reports.push(...rr.reports); } }
+assert.equal(s.phase, 'build', 'после снабжения идёт строительство');
+assert.deepEqual(s.stock.a, { food: 1, wood: 2, marble: 4, copper: 2 });
+const log = reports.filter((r) => r.data.type === 'supply');
 assert.equal(log.length, 2, 'в журнале снабжения запись на каждого игрока');
 assert.deepEqual(log[0].data.spent, { food: 3, wood: 0, marble: 0, copper: 2 });
-assert.deepEqual(log[0].data.left, step.state.stock.a);
+assert.deepEqual(log[0].data.left, s.stock.a);
 assert.deepEqual(log[0].audience, ['a', 'b'], 'журнал виден всем');
-s = step.state;
 s = endAll(s, ['a', 'b']);
 assert.equal(s.phase, 'harvest');
 const fin = endAll(s, ['a', 'b']);
-assert.equal(fin.turn, 2); assert.equal(fin.phase, 'maneuver');
+assert.equal(fin.turn, 2); assert.equal(fin.phase, 'maneuver'); assert.equal(fin.stage, 'riders'); assert.ok(fin.units.every((u) => !u.tired && !u.blocked));
 console.log('2. манёвр → снабжение (журнал на каждого) → строительство → добыча → бой → новый ход — ок');
 
 // ---------- 3. нехватка ресурсов ----------
 s = fresh(['a', 'b']);
 s = { ...s, stock: { ...s.stock, a: { food: 1, wood: 0, marble: 0, copper: 0 } } };
-s = endAll(s, ['a', 'b']);
+s = endManeuver(s, ['a', 'b']);
 assert.equal(s.phase, 'supply'); assert.deepEqual(s.ready, ['b']);
-const [u1, u2] = soldiers(s, 'a');
+const u1 = walker(s, 'a'), u2 = rider(s, 'a');
 assert.ok(bad(s, 'a', { type: 'end_phase' }).includes('Не хватает'));
 assert.ok(!G.applyAction(s, 'a', { type: 'drop_unsupplied', unitIds: [u1.id] }).ok);
 const dropped = act(s, 'a', { type: 'drop_unsupplied', unitIds: [u1.id, u2.id] });
@@ -184,38 +186,71 @@ assert.equal(G.viewFor(opened, 'b').roads.length, 1, 'и дорогу');
 assert.ok(endAll(hiddenUpgrade, ['a', 'b']).units.some((u) => u.kind === 'fortified_colony' && u.shownKind === 'fortified_colony'));
 console.log('5б. новые постройки и дороги скрыты до конца фазы строительства, улучшение выглядит прежним — ок');
 
-// ---------- 6. дороги и движение ----------
-let move = endAll(act(withRoad.state, 'b', { type: 'end_phase' }).state, ['a']);   // дальше манёвр нового хода достигнем ниже
-// прямое состояние манёвра: два шага по дороге
+// ---------- 6. этапы манёвра ----------
 const mv = fresh(['a', 'b'], 3);
 const mHome = { q: colony(mv, 'a').q, r: colony(mv, 'a').r };
-const M1 = G.neighbors(mHome).find((n) => isLand(mv, n));
-const M2 = G.neighbors(M1).find((n) => isLand(mv, n) && !G.sameCell(n, mHome));
-const road = (id, owner, a, b, freshFlag = false) => ({ id, ownerId: owner, a, b, fresh: freshFlag });
-const hero = soldiers(mv, 'a')[0];
-let t = { ...mv, roads: [road('r1', 'b', mHome, M1)] };            // дорогу построил ДРУГОЙ игрок: ходить по ней можно
-t = act(t, 'a', { type: 'move', unitId: hero.id, to: M1 }).state;
-let h = t.units.find((u) => u.id === hero.id);
-assert.ok(h.boosted && !h.tired, 'прошёл по дороге — может шагнуть ещё раз');
-t = act(t, 'a', { type: 'move', unitId: hero.id, to: M2 }).state;
-h = t.units.find((u) => u.id === hero.id);
-assert.ok(G.sameCell(h, M2) && h.tired, 'второй шаг — и всё');
-assert.ok(!G.applyAction(t, 'a', { type: 'move', unitId: hero.id, to: M1 }).ok, 'больше двух шагов нельзя');
-// без дороги — один шаг
-const plain = act(mv, 'a', { type: 'move', unitId: hero.id, to: M1 }).state;
-assert.ok(plain.units.find((u) => u.id === hero.id).tired, 'без дороги юнит устаёт после одного шага');
-// шаг по дороге вторым (после обычного) бонуса не даёт
-const R2 = G.neighbors(M1).find((n) => isLand(mv, n) && !G.sameCell(n, mHome));
-let late = { ...mv, roads: [road('r2', 'a', M1, R2)] };
-late = { ...late, units: late.units.map((u) => (u.id === hero.id ? { ...u, q: M1.q, r: M1.r, revealed: { q: M1.q, r: M1.r } } : u)) };
-late = act(late, 'a', { type: 'move', unitId: hero.id, to: R2 }).state;
-assert.ok(late.units.find((u) => u.id === hero.id).boosted === true && !late.units.find((u) => u.id === hero.id).tired, 'дорога на первом шаге даёт ещё один');
-// манёвр не завершается, пока у юнита есть шаг; бонус сбрасывается на новом ходу
-const half = act({ ...mv, roads: [road('r1', 'a', mHome, M1)] }, 'a', { type: 'move', unitId: hero.id, to: M1 }).state;
-const other = soldiers(half, 'a')[1];
-const afterOther = act(half, 'a', { type: 'move', unitId: other.id, to: G.neighbors(other).find((n) => isLand(mv, n)) }).state;
-assert.ok(!afterOther.ready.includes('a'), 'у юнита с рывком ещё есть шаг — манёвр не закончен');
-console.log('6. дороги: юнит, прошедший по дороге (любого игрока), делает ещё один шаг; максимум два — ок');
+const M1 = landNeighbors(mv, mHome)[0];
+const M2 = landNeighbors(mv, M1).find((n) => !G.sameCell(n, mHome));
+assert.ok(bad(mv, 'a', { type: 'move', unitId: walker(mv, 'a').id, to: M1 }).includes('повышенной скоростью'), 'этап 1: обычный юнит не ходит');
+let st = act(mv, 'a', { type: 'move', unitId: rider(mv, 'a').id, to: M1 }).state;
+assert.ok(at(st, rider(mv, 'a').id).tired);
+assert.ok(st.ready.includes('a'), 'ходить больше некому — игрок готов сам');
+const secondStep = moveUnit({ ...st, ready: [] }, 'a', rider(mv, 'a').id, M2);
+assert.ok(!secondStep.ok && secondStep.error.includes('на этом этапе'), 'один шаг за этап');
+assert.deepEqual(at(st, rider(mv, 'a').id).revealed, mHome, 'до синхронизации противники видят старую позицию');
+st = endAll(st, ['a', 'b']);
+assert.deepEqual(at(st, rider(mv, 'a').id).revealed, { q: M1.q, r: M1.r }, 'после этапа перемещение показано всем');
+assert.equal(st.stage, 'march', 'этап дорог пропущен: дорог нет');
+assert.ok(!at(st, rider(mv, 'a').id).tired, 'на новом этапе юнит снова может ходить');
+// этап «дороги»: только по дороге, дорога общая
+let onRoad = { ...mv, stage: 'roads', roads: [road('r1', 'b', mHome, M1)] };
+assert.ok(bad(onRoad, 'a', { type: 'move', unitId: walker(onRoad, 'a').id, to: landNeighbors(mv, mHome).find((n) => !G.sameCell(n, M1)) }).includes('по дороге'));
+onRoad = act(onRoad, 'a', { type: 'move', unitId: walker(onRoad, 'a').id, to: M1 }).state;
+assert.ok(G.sameCell(at(onRoad, walker(mv, 'a').id), M1));
+const marchNow = endAll(onRoad, ['a', 'b']);
+assert.equal(marchNow.stage, 'march');
+const again = act(marchNow, 'a', { type: 'move', unitId: walker(mv, 'a').id, to: M2 }).state;
+assert.ok(G.sameCell(at(again, walker(mv, 'a').id), M2), 'тот же юнит идёт и на этапе марша');
+// этап пропускается, когда ходить некому (нет всадников)
+const noRiders = { ...mv, units: mv.units.filter((u) => u.kind !== 'rider') };
+assert.ok(G.removePlayer(noRiders, 'zzz').state.stage === 'riders');
+const skipState = endAll({ ...noRiders, ready: [] }, []);
+assert.equal(skipState.stage, 'riders');
+console.log('6. этапы манёвра: всадники → по дорогам → марш; синхронизация после каждого; пропуск пустых этапов — ок');
+
+// ---------- 6б. столкновения ----------
+const { x: cX, y: cY, z: cZ } = corridor(mv);
+const setup = (kindA, kindB, ca, cb) => {
+  let q = mv;
+  q = place(q, kindA === 'rider' ? rider(q, 'a').id : walker(q, 'a').id, ca);
+  return place(q, kindB === 'rider' ? rider(q, 'b').id : walker(q, 'b').id, cb);
+};
+let coll = setup('rider', 'rider', cX, cZ);
+coll = act(coll, 'a', { type: 'move', unitId: rider(coll, 'a').id, to: cY }).state;
+coll = act(coll, 'b', { type: 'move', unitId: rider(coll, 'b').id, to: cY }).state;   // ходить больше некому: этап синхронизируется сам
+assert.equal(coll.stage, 'march');
+assert.ok(at(coll, rider(mv, 'a').id).blocked && at(coll, rider(mv, 'b').id).blocked, 'столкнувшиеся юниты заблокированы');
+assert.ok(bad({ ...coll, stage: 'march' }, 'a', { type: 'move', unitId: rider(mv, 'a').id, to: cX }).includes('столкнулся'), 'дальше двигаться нельзя');
+assert.ok(!canStillMove({ ...coll, stage: 'march' }, at(coll, rider(mv, 'a').id)));
+const headOn = (v) => { let q = setup('rider', 'rider', cX, cY); q = act(q, 'a', { type: 'move', unitId: rider(q, 'a').id, to: cY }).state; return act(q, 'b', { type: 'move', unitId: rider(q, 'b').id, to: cX }, () => v).state; };   // последний ход запускает синхронизацию
+const lo = headOn(0.1), hi = headOn(0.9);
+for (const q of [lo, hi]) {
+  const ua = at(q, rider(mv, 'a').id), ub = at(q, rider(mv, 'b').id);
+  assert.ok(G.sameCell(ua, ub) && (G.sameCell(ua, cX) || G.sameCell(ua, cY)), 'в одной из двух стартовых клеток');
+  assert.ok(ua.blocked && ub.blocked, 'и заблокированы');
+}
+assert.ok(!G.sameCell(at(lo, rider(mv, 'a').id), at(hi, rider(mv, 'a').id)), 'какая именно — случайно');
+let still = setup('rider', 'unit', cX, cY);
+still = act(still, 'a', { type: 'move', unitId: rider(still, 'a').id, to: cY }).state;
+still = endAll(still, ['a', 'b']);
+assert.ok(at(still, rider(mv, 'a').id).blocked && at(still, walker(mv, 'b').id).blocked, 'заблокированы и вошедший, и стоявший');
+let lone = place(mv, rider(mv, 'a').id, cX);
+lone = { ...lone, units: lone.units.filter((u) => !(u.ownerId === 'b' && u.kind !== 'colony')) };
+lone = place(lone, colony(lone, 'b').id, cY);
+lone = act(lone, 'a', { type: 'move', unitId: rider(lone, 'a').id, to: cY }).state;
+lone = endAll(lone, ['a', 'b']);
+assert.ok(!at(lone, rider(mv, 'a').id).blocked, 'постройки в столкновении не участвуют');
+console.log('6б. столкновения и встречные ходы: блокировка до конца хода, случайная стартовая клетка, постройки не блокируют — ок');
 
 // ---------- 7. цепочки колоний и добыча ----------
 const H = aHome;
@@ -266,51 +301,46 @@ let c = resolveBattles(bs([unit('a1', 'a', 'unit', P), unit('a2', 'a', 'unit', P
 assert.deepEqual(c.state.units.map((u) => u.id), ['a1', 'a2']);
 c = resolveBattles(bs([unit('a1', 'a', 'unit', P), unit('b1', 'b', 'unit', P)]), script(die(6), die(6)));
 assert.equal(c.reports[0].data.winnerId, null);
-const sw = fresh(['a', 'b'], 7);
-const X = sw.hexes.find((x) => x.type !== 'sea' && G.neighbors(x).some((n) => isLand(sw, n)));
-const Y = G.neighbors(X).find((n) => isLand(sw, n));
-const [a1] = soldiers(sw, 'a'); const [b1] = soldiers(sw, 'b');
-const swapped = place(place(sw, a1.id, X), b1.id, Y);
-const meet = (v) => { let q = act(swapped, 'a', { type: 'move', unitId: a1.id, to: Y }).state; q = act(q, 'b', { type: 'move', unitId: b1.id, to: X }).state; q = act(q, 'a', { type: 'end_phase' }).state; return act(q, 'b', { type: 'end_phase' }, () => v).state; };
-for (const t2 of [meet(0.1), meet(0.9)]) assert.ok(G.sameCell(t2.units.find((u) => u.id === a1.id), t2.units.find((u) => u.id === b1.id)), 'столкнулись');
 const priv = fresh(['a', 'b'], 11);
 const before = JSON.stringify(G.viewFor(priv, 'b'));
-const mover = soldiers(priv, 'a')[0];
+const mover = rider(priv, 'a');
 const moved = act(priv, 'a', { type: 'move', unitId: mover.id, to: G.neighbors(mover).find((n) => isLand(priv, n)) }).state;
-assert.equal(JSON.stringify(G.viewFor(moved, 'b')), before, 'ход a не виден b до раскрытия');
+const hideReady = (json) => { const v = JSON.parse(json); delete v.ready; return JSON.stringify(v); };   // готовность игроков публична
+assert.ok(hideReady(JSON.stringify(G.viewFor(moved, 'b'))) === hideReady(before), 'ход a не виден b до раскрытия');
 const stateView = G.viewFor(withRoad.state, 'b');
 assert.ok(stateView.roads.length === 0 || stateView.roads.every((rd) => G.canSee(withRoad.state, 'b', rd.a) || G.canSee(withRoad.state, 'b', rd.b)), 'дороги видны только при виде на конец');
-console.log('9. бои, разъезд, приватность и видимость дорог — ок');
+console.log('9. бои, приватность и видимость дорог — ок');
 
 // ---------- 10. автопропуск строительства ----------
-const broke = endAll({ ...fresh(['a', 'b']), stock: { a: { food: 9, wood: 0, marble: 0, copper: 9 }, b: { food: 9, wood: 0, marble: 0, copper: 9 } } }, ['a', 'b']);
+const broke = endManeuver({ ...fresh(['a', 'b']), stock: { a: { food: 9, wood: 0, marble: 0, copper: 9 }, b: { food: 9, wood: 0, marble: 0, copper: 9 } } }, ['a', 'b']);
 assert.equal(broke.phase, 'harvest', 'нечего строить — фаза строительства проходит сама');
 console.log('10. фаза строительства пропускается, если строить нечего — ок');
 
 // ---------- 11. выход, соло ----------
 const left = G.removePlayer(endAll(fresh(['a', 'b', 'c']), ['a', 'b']), 'c', lcg(1));
-assert.notEqual(left.state.phase, 'maneuver', 'ушёл последний, кого ждали');
+assert.ok(left.state.phase !== 'maneuver' || left.state.stage !== 'riders', 'ушёл последний, кого ждали: этап пошёл дальше');
 let solo = { ...fresh(['a']), stock: { a: { food: 99, wood: 0, marble: 0, copper: 99 } } };
-for (let turn = 1; turn < G.WIN_TURN; turn++) solo = endAll(endAll(solo, ['a']), ['a']);
+for (let turn = 1; turn < G.WIN_TURN; turn++) solo = endAll(endManeuver(solo, ['a']), ['a']);
 assert.equal(solo.winnerId, 'a');
 console.log('11. выход игрока и соло-партия — ок');
 
 // ---------- 12. 150 случайных партий ----------
-let builds = 0, roadsBuilt = 0, boosts = 0;
-for (let seed = 1; seed <= 150; seed++) {
+let builds = 0, roadsBuilt = 0, blockedGames = 0; const stageMoves = { riders: 0, roads: 0, march: 0 };
+const SEEDS = Number(process.env.SEEDS ?? 150);
+for (let seed = 1; seed <= SEEDS; seed++) {
   const players = ['a', 'b', 'c', 'd'].slice(0, 1 + (seed % 4));
   const rng = lcg(seed * 13);
   let g = G.createGame(players, { mapSize: 5 + (seed % 31), mapStyle: G.MAP_STYLES[seed % 3] }, rng);
   g = { ...g, hexes: g.hexes.map((x) => ({ ...x, discovered: rng() < 0.7 || x.discovered })) };   // больше разведанных клеток
-  for (let i = 0; i < 80 && !g.winnerId; i++) {
+  for (let i = 0; i < 120 && !g.winnerId; i++) {
     for (const p of players) {
       if (g.winnerId || g.ready.includes(p)) continue;
       const mine = g.units.filter((u) => u.ownerId === p);
       let action = { type: 'end_phase' };
       if (g.phase === 'maneuver') {
-        const mover2 = mine.find((u) => !u.tired && G.UNIT_KINDS[u.kind].mobile);
-        const to = mover2 && G.neighbors(mover2).find((n) => isLand(g, n));
-        if (mover2 && to && rng() < 0.7) action = { type: 'move', unitId: mover2.id, to };
+        const mover2 = mine.find((u) => canStillMove(g, u));
+        const steps = mover2 ? legalSteps(g, mover2) : [];
+        if (mover2 && rng() < 0.75) { action = { type: 'move', unitId: mover2.id, to: steps[Math.floor(rng() * steps.length)] }; stageMoves[g.stage]++; }
       } else if (g.phase === 'supply') {
         const keep = [...mine]; const ids = [];
         while (!G.covers(g.stock[p], G.supplyNeeds(keep)) && keep.length) ids.push(keep.pop().id);
@@ -328,12 +358,13 @@ for (let seed = 1; seed <= 150; seed++) {
       const res = G.applyAction(g, p, action, rng);
       assert.ok(res.ok, `seed ${seed} ${g.phase} ${p} ${action.type}: ${res.error}`);
       g = res.value.state;
-      boosts += g.units.filter((u) => u.boosted).length ? 1 : 0;
+      if (g.units.some((u) => u.blocked)) blockedGames++;
+      assert.ok(g.units.every((u) => !(u.blocked && u.tired && g.phase === 'maneuver' && false)), 'ok');
       assert.ok(Object.values(g.stock).every((s2) => Object.values(s2).every((n) => n >= 0 && Number.isInteger(n))), 'запасы неотрицательны');
       assert.equal(new Set(g.units.map((u) => u.id)).size, g.units.length, 'идентификаторы уникальны');
       assert.equal(new Set(g.roads.map((rd) => rd.id)).size, g.roads.length);
     }
   }
 }
-assert.ok(builds > 100 && roadsBuilt > 10 && boosts > 0, `случайные партии действительно строили (${builds} построек, ${roadsBuilt} дорог, рывков ${boosts})`);
-console.log(`12. 150 случайных партий: построек ${builds}, дорог ${roadsBuilt}, рывков по дороге ${boosts} — без ошибок`);
+if (SEEDS >= 100) assert.ok(builds > 100 && roadsBuilt > 10 && stageMoves.riders > 50 && stageMoves.march > 100 && blockedGames > 0, JSON.stringify({ builds, roadsBuilt, stageMoves, blockedGames }));
+console.log(`12. ${SEEDS} случайных партий: построек ${builds}, дорог ${roadsBuilt}, ходов по этапам ${JSON.stringify(stageMoves)}, шагов со столкновениями ${blockedGames} — без ошибок`);

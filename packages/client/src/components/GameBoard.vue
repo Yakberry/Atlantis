@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { isValidDrop, RESOURCES, supplyNeeds, type BuildingType, type Coord, type GameEvent, type Phase } from '@atlantis/shared';
+import { isValidDrop, RESOURCES, supplyNeeds, type BuildingType, type Coord, type GameEvent, type ManeuverStage, type Phase } from '@atlantis/shared';
 import { computed, ref, watch } from 'vue';
 import { RESOURCE_LABELS } from '../board/palette';
 import { POPUP_MS, type Popup } from '../board/popups';
@@ -70,14 +70,20 @@ const dropIsValid = computed(
 
 // ---------- действия ----------
 const HINTS: Record<Phase, string> = {
-  maneuver: 'Выберите юнита и соседнюю локацию суши (по дороге можно пройти на локацию дальше). Манёвр завершится сам, когда ходить будет некому.',
+  maneuver: '',
   supply: '',
   build: 'Выберите подсвеченную локацию и постройку в меню внизу. Фаза завершится сама, если строить нечего.',
   harvest:
     'Нажмите на колонию, чтобы добыть ресурс: за фазу добывают с одной цепочки колоний, соединённых дорогами. «Завершить ход» добудет с наибольшей цепочки. Захваченные колонии не добывают.',
 };
+/** Манёвр идёт тремя этапами; после каждого сервер показывает всем перемещения. Этап заканчивается сам, когда ходить некому. */
+const MANEUVER_HINTS: Record<ManeuverStage, string> = {
+  riders: 'Этап 1: ходят только юниты с повышенной скоростью (всадники), по одному шагу. Столкнувшиеся юниты до конца хода не ходят.',
+  roads: 'Этап 2: любой юнит может сделать один шаг, но только по дороге (дороги общие).',
+  march: 'Этап 3: любой юнит может сделать один шаг.',
+};
 const END_LABELS: Record<Phase, string> = {
-  maneuver: 'Завершить манёвр',
+  maneuver: 'Завершить этап',
   supply: '',
   build: 'Завершить строительство',
   harvest: 'Завершить ход',
@@ -88,7 +94,8 @@ const hint = computed(() => {
   if (picking.value) {
     return 'Не хватает ресурсов на снабжение. Нажимайте на юнитов и постройки, которые останутся без него (они будут удалены), пока оставшимся не хватит.';
   }
-  return store.isReady ? `Ждём: ${waitingFor.value}` : HINTS[game.value.phase];
+  if (store.isReady) return `Ждём: ${waitingFor.value}`;
+  return game.value.phase === 'maneuver' ? MANEUVER_HINTS[game.value.stage] : HINTS[game.value.phase];
 });
 
 const move = (unitId: string, to: Coord) => run(() => store.sendAction({ type: 'move', unitId, to }));
@@ -106,7 +113,7 @@ const confirmDrop = () =>
 
 <template>
   <section v-if="game" class="game">
-    <PhaseBar :phase="game.phase" :turn="game.turn" />
+    <PhaseBar :phase="game.phase" :stage="game.stage" :turn="game.turn" />
 
     <HexBoard
       :game="game"

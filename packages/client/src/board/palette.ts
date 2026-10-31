@@ -1,7 +1,7 @@
 import type { Resource } from '@atlantis/shared';
 
 export const RESOURCE_COLORS: Record<Resource, string> = {
-  food: '#C59137',
+  food: '#F8B423',
   wood: '#4F9153',
   marble: '#d9dee6',
   copper: '#894927',

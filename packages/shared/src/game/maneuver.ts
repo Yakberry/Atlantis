@@ -11,48 +11,52 @@ export const markDiscovered = (hexes: Hex[], units: Unit[]): Hex[] =>
     hex.discovered || units.some((unit) => sameCell(unit, hex)) ? { ...hex, discovered: true } : hex,
   );
 
-/** Клетки, в которые юнит может сделать шаг. */
+/** Клетки, в которые юнит может сделать шаг на текущем этапе манёвра. */
 export function legalSteps(state: GameState, unit: Unit): Coord[] {
   const kind = UNIT_KINDS[unit.kind];
-  if (!kind.mobile) return [];
+  if (!kind.mobile || unit.blocked) return [];
+  if (state.stage === 'riders' && !kind.fast) return [];
+
   return neighbors(unit).filter((cell) => {
     const hex = state.hexes.find((h) => sameCell(h, cell));
-    return hex !== undefined && terrainOf(hex.type) === kind.terrain;
+    if (!hex || terrainOf(hex.type) !== kind.terrain) return false;
+    return state.stage !== 'roads' || roadBetween(state.roads, unit, cell) !== undefined;
   });
 }
 
-/** Юнит ещё может пойти в этом манёвре. */
+/** Юнит ещё может пойти на этом этапе. */
 export const canStillMove = (state: GameState, unit: Unit): boolean => !unit.tired && legalSteps(state, unit).length > 0;
 
-/**
- * Юнит переходит в соседнюю локацию сразу (для владельца), противники узнают об этом при раскрытии манёвра.
- * За манёвр юнит делает один шаг; если хоть раз прошёл по дороге (любого игрока), может сделать ещё один.
- */
+/** Шаг юнита: для владельца действует сразу, противники узнают о нём при синхронизации в конце этапа. */
 export function moveUnit(state: GameState, playerId: string, unitId: string, to: Coord): Result<Applied> {
   const unit = state.units.find((u) => u.id === unitId && u.ownerId === playerId);
   if (!unit) return fail('Это не ваш юнит');
-  if (!UNIT_KINDS[unit.kind].mobile) return fail('Постройки не умеют двигаться');
-  if (unit.tired) return fail('Юнит уже ходил в этом ходу');
+  const kind = UNIT_KINDS[unit.kind];
+  if (!kind.mobile) return fail('Постройки не умеют двигаться');
+  if (unit.blocked) return fail('Юнит столкнулся с чужими юнитами и до конца хода не может двигаться');
+  if (unit.tired) return fail('Юнит уже ходил на этом этапе');
+  if (state.stage === 'riders' && !kind.fast) return fail('На этом этапе ходят только юниты с повышенной скоростью');
   const target = state.hexes.find((hex) => sameCell(hex, to));
   if (!target) return fail('Такой локации нет');
-  if (UNIT_KINDS[unit.kind].terrain !== terrainOf(target.type)) return fail('Сюда этот юнит пройти не может');
+  if (kind.terrain !== terrainOf(target.type)) return fail('Сюда этот юнит пройти не может');
   if (distance(unit, to) !== 1) return fail('Можно перейти только в соседнюю локацию');
+  if (state.stage === 'roads' && !roadBetween(state.roads, unit, to)) return fail('На этом этапе можно идти только по дороге');
 
-  const boosted = unit.boosted || roadBetween(state.roads, unit, to) !== undefined;
-  const steps = unit.steps + 1;
-  const tired = steps >= (boosted ? 2 : 1);
   return ok({
     ...state,
-    units: state.units.map((u) => (u.id === unit.id ? { ...u, q: to.q, r: to.r, steps, boosted, tired } : u)),
+    units: state.units.map((u) => (u.id === unit.id ? { ...u, q: to.q, r: to.r, tired: true } : u)),
   });
 }
 
 /**
- * Конец манёвра: перемещения становятся известны всем, юниты отдыхают, посещённые локации изведаны.
- * Юниты разных игроков, которым надо было поменяться местами, на деле столкнулись в одной из локаций,
- * откуда начали ход (какой именно — случайно): бой на фазе 4 произойдёт там.
+ * Синхронизация в конце этапа манёвра: перемещения становятся известны всем, посещённые локации изведаны, юниты
+ * снова могут ходить на следующем этапе.
+ * - Юниты разных игроков, двигавшиеся навстречу друг другу (поменялись бы соседними локациями), на деле столкнулись
+ *   в одной из двух локаций, откуда начали шаг (какой именно — случайно): она становится конечной для всех таких юнитов.
+ * - Юниты разных игроков, оказавшиеся в одной локации, столкнулись: до конца хода они не могут двигаться
+ *   (бой в такой локации пройдёт в конце хода). Постройки в столкновении не участвуют.
  */
-export function resolveManeuver(state: GameState, rng: Rng): GameState {
+export function syncManeuver(state: GameState, rng: Rng): GameState {
   const crossings = new Map<string, { cells: [Coord, Coord]; units: Unit[] }>();
   for (const unit of state.units) {
     if (sameCell(unit, unit.revealed)) continue;
@@ -69,10 +73,22 @@ export function resolveManeuver(state: GameState, rng: Rng): GameState {
     const place = cells[rng() < 0.5 ? 0 : 1];
     for (const unit of colliding) meeting.set(unit.id, place);
   }
-
-  const units = state.units.map((unit) => {
+  const placed = state.units.map((unit) => {
     const at = meeting.get(unit.id) ?? unit;
-    return { ...unit, q: at.q, r: at.r, revealed: { q: at.q, r: at.r }, tired: false, steps: 0, boosted: false };
+    return { ...unit, q: at.q, r: at.r };
   });
+
+  const owners = new Map<string, Set<string>>();
+  for (const unit of placed) {
+    if (UNIT_KINDS[unit.kind].building) continue;
+    owners.set(key(unit), (owners.get(key(unit)) ?? new Set<string>()).add(unit.ownerId));
+  }
+
+  const units = placed.map((unit) => ({
+    ...unit,
+    revealed: { q: unit.q, r: unit.r },
+    tired: false,
+    blocked: unit.blocked || (!UNIT_KINDS[unit.kind].building && (owners.get(key(unit))?.size ?? 0) >= 2),
+  }));
   return { ...state, units, hexes: markDiscovered(state.hexes, units) };
 }

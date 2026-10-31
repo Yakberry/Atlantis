@@ -10,10 +10,10 @@ import { emptyStock, terrainOf, UNIT_KINDS, type GameState, type GameView, type 
  */
 const knownPosition = (unit: Unit, viewerId: string): Coord => (unit.ownerId === viewerId ? unit : unit.revealed);
 
-/** Владелец знает о юните всё; остальные видят его вид (`shownKind`) и ничего о его усталости. */
+/** Владелец знает о юните всё; остальные видят его вид (`shownKind`) и ничего о его усталости и столкновениях. */
 const toUnitView = (unit: Unit, viewerId: string): UnitView =>
   unit.ownerId === viewerId
-    ? { id: unit.id, ownerId: unit.ownerId, kind: unit.kind, tired: unit.tired }
+    ? { id: unit.id, ownerId: unit.ownerId, kind: unit.kind, tired: unit.tired, blocked: unit.blocked }
     : { id: unit.id, ownerId: unit.ownerId, kind: unit.shownKind };
 
 /** Игрок видит локацию: рядом с ней (в пределах обзора вида) стоит его юнит или постройка. */

@@ -7,7 +7,7 @@ import { LOCATION_NAMES } from './names';
 import {
   RESOURCES,
   START_STOCK,
-  STARTING_UNITS,
+  STARTING_KINDS,
   type Applied,
   type GameAction,
   type GameSettings,
@@ -55,11 +55,10 @@ export function createGame(playerIds: string[], settings: GameSettings, rng: Rng
       shownKind: kind,
       fresh: false,
       tired: false,
-      steps: 0,
-      boosted: false,
+      blocked: false,
       revealed: { q, r },
     });
-    return [spawn('colony'), ...Array.from({ length: STARTING_UNITS }, () => spawn('unit'))];
+    return [spawn('colony'), ...STARTING_KINDS.map(spawn)];
   });
 
   const stock = Object.fromEntries(playerIds.map((id) => [id, { ...START_STOCK }]));
@@ -68,6 +67,7 @@ export function createGame(playerIds: string[], settings: GameSettings, rng: Rng
     slots: Object.fromEntries(playerIds.map((id, i) => [id, i])),
     turn: 1,
     phase: 'maneuver',
+    stage: 'riders',
     ready: [],
     stock,
     shownStock: Object.fromEntries(playerIds.map((id) => [id, { ...START_STOCK }])),
