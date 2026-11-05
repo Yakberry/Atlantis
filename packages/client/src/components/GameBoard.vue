@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { isValidDrop, RESOURCES, supplyNeeds, type BuildingType, type Coord, type GameEvent, type ManeuverStage, type Phase } from '@atlantis/shared';
+import { isValidDrop, RESOURCES, supplyNeeds, type Resource, type Stock, type BuildingType, type Coord, type GameEvent, type ManeuverStage, type Phase } from '@atlantis/shared';
 import { computed, ref, watch } from 'vue';
 import { RESOURCE_LABELS } from '../board/palette';
 import { POPUP_MS, type Popup } from '../board/popups';
@@ -8,6 +8,7 @@ import { useRoomStore } from '../stores/room';
 import { useSessionStore } from '../stores/session';
 import HexBoard from './HexBoard.vue';
 import PhaseBar from './PhaseBar.vue';
+import TradePanel from './TradePanel.vue';
 
 const store = useRoomStore();
 const session = useSessionStore();
@@ -73,6 +74,7 @@ const HINTS: Record<Phase, string> = {
   maneuver: '',
   supply: '',
   build: 'Выберите подсвеченную локацию и постройку в меню внизу. Фаза завершится сама, если строить нечего.',
+  trade: 'Торговля с купцами: принимайте предложения по порядку или откажитесь. Отказ завершает вашу торговлю в этом ходу.',
   harvest:
     'Нажмите на колонию, чтобы добыть ресурс: за фазу добывают с одной цепочки колоний, соединённых дорогами. «Завершить ход» добудет с наибольшей цепочки. Захваченные колонии не добывают.',
 };
@@ -87,6 +89,7 @@ const END_LABELS: Record<Phase, string> = {
   supply: '',
   build: 'Завершить строительство',
   harvest: 'Завершить ход',
+  trade: '',
 };
 
 const hint = computed(() => {
@@ -103,6 +106,12 @@ const harvest = (colonyId: string) =>
   run(async () => showPopups(await store.sendAction({ type: 'harvest', colonyId })));
 const build = (building: BuildingType, at: Coord, to?: Coord) =>
   run(() => store.sendAction({ type: 'build', building, at, ...(to ? { to } : {}) }));
+/** Текущее предложение купцов, пока игрок торгует. */
+const offer = computed(() => {
+  const trade = game.value?.trade;
+  return game.value?.phase === 'trade' && !store.isReady && trade && trade.price !== null ? { ...trade, price: trade.price } : null;
+});
+const tradeWith = (give: Stock, get: Resource) => run(() => store.sendAction({ type: 'trade', give, get }));
 const endPhase = () => run(async () => showPopups(await store.sendAction({ type: 'end_phase' })));
 const confirmDrop = () =>
   run(async () => {
@@ -127,6 +136,8 @@ const confirmDrop = () =>
       @toggle-supply="toggleSupply"
     />
 
+    <TradePanel v-if="offer" :trade="offer" :stock="game.stock" @accept="tradeWith" @decline="endPhase" />
+
     <div class="turnbar">
       <template v-if="game.winnerId">
         <strong>Игра окончена</strong>
@@ -141,7 +152,7 @@ const confirmDrop = () =>
           </span>
           <button :disabled="!dropIsValid" @click="confirmDrop">Подтвердить выбор</button>
         </template>
-        <button v-else-if="game.phase !== 'supply'" :disabled="store.isReady" @click="endPhase">
+        <button v-else-if="game.phase !== 'supply' && game.phase !== 'trade'" :disabled="store.isReady" @click="endPhase">
           {{ END_LABELS[game.phase] }}
         </button>
       </template>

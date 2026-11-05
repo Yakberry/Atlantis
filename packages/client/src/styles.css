@@ -6,8 +6,6 @@
   --muted: #8fb3b8;
   --accent: #e8c07d;
   --danger: #ff8f7a;
-  --unit-stroke: #080a0d;
-  --unit-stroke-width: 4;
   color-scheme: dark;
   font: 16px/1.5 system-ui, sans-serif;
 }
@@ -152,19 +150,10 @@ button.secondary { background: transparent; border-color: var(--line); color: va
 
 /* ---------- Юниты и постройки ---------- */
 .unit.selectable, .unit.harvestable { cursor: pointer; }
-.unit.tired { opacity: 0.7; }
-.unit { stroke: var(--bg); stroke-width: 3; stroke-linejoin: round; }
+.unit.tired { opacity: 0.4; }
+.unit .shape { stroke: var(--bg); stroke-width: 3; stroke-linejoin: round; }
 .unit .backdrop { fill: rgba(0, 0, 0, 0.35); }
-.unit.selected { stroke: #fff; stroke-width: 4; }
-.unit :deep(.ink-outline) {
-  stroke: var(--unit-stroke, #080a0d);
-  stroke-width: var(--unit-stroke-width, 7);
-}
-
-.unit :deep(g.selected .ink-outline) {
-  stroke: #ffffff;
-  stroke-width: 9;
-}
+.unit.selected .shape { stroke: #fff; stroke-width: 4; }
 
 /* ---------- Настройки графики ---------- */
 .stage-actions { display: grid; justify-items: start; gap: 0.35rem; }
@@ -234,3 +223,20 @@ button.secondary { background: transparent; border-color: var(--line); color: va
 
 /* ---------- Столкновение: юнит до конца хода не ходит ---------- */
 .unit.blocked .shape { stroke: var(--danger); stroke-width: 4; }
+
+/* ---------- Торговля с купцами ---------- */
+.phases .auto { font-style: italic; opacity: 0.8; }
+.trade { display: grid; gap: 0.6rem; }
+.trade header { display: flex; justify-content: space-between; gap: 1rem; }
+.trade p { margin: 0; }
+.trade .price { font-size: 1.3em; color: var(--accent); }
+.trade-columns { display: grid; grid-template-columns: 3fr 2fr; gap: 1.5rem; }
+.trade-list { display: grid; gap: 0.3rem; margin: 0.3rem 0 0; padding: 0; list-style: none; }
+.trade-list li { display: flex; align-items: center; gap: 0.5rem; }
+.trade .swatch { display: inline-block; width: 0.8rem; height: 0.8rem; margin-right: 0.4rem; border-radius: 2px; background: var(--resource); }
+.trade-list li > .swatch { margin-right: 0; }
+.trade-name { min-width: 8.5rem; }
+.trade-count { min-width: 1.5ch; text-align: center; font-variant-numeric: tabular-nums; }
+.trade .step { padding: 0.1rem 0.6rem; }
+.trade .pick { display: flex; align-items: center; width: 100%; text-align: left; }
+.trade .pick.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }

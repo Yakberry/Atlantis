@@ -22,6 +22,7 @@ import { settle } from './phases';
 import { pick, shuffle, type Rng } from './random';
 import { fail, ok } from './result';
 import { dropUnsupplied } from './supply';
+import { trade } from './trade';
 
 export function createGame(playerIds: string[], settings: GameSettings, rng: Rng = Math.random): GameState {
   if (playerIds.length === 0) throw new Error('Нужен хотя бы один игрок');
@@ -75,6 +76,7 @@ export function createGame(playerIds: string[], settings: GameSettings, rng: Rng
     hexes: markDiscovered(board, units),
     units,
     roads: [],
+    market: { prices: [], steps: {} },
     nextId: serial + 1,
   };
   return settle(state, rng).state;
@@ -116,10 +118,15 @@ function perform(state: GameState, playerId: string, action: GameAction, rng: Rn
       if (state.phase !== 'build') return fail('Строить можно только на фазе строительства');
       return build(state, playerId, action);
 
+    case 'trade':
+      if (state.phase !== 'trade') return fail('Торговать можно только на фазе торговли');
+      return trade(state, playerId, action.give, action.get);
+
     case 'end_phase':
       switch (state.phase) {
         case 'maneuver':
         case 'build':
+        case 'trade': // на торговле это отказ от текущей цены
           return ok({ ...state, ready: [...state.ready, playerId] });
         case 'harvest': {
           const { state: harvested, events } = harvestRemaining(state, playerId, rng);

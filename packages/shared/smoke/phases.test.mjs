@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import * as G from './index.js';
 import { resolveBattles } from './battle.js';
 import { harvestColony } from './harvest.js';
+import { rollPrices } from './trade.js';
 import { canStillMove, legalSteps, moveUnit } from './maneuver.js';
 import { LOCATION_NAMES } from './names.js';
 
@@ -76,7 +77,9 @@ assert.deepEqual(log[0].audience, ['a', 'b'], 'журнал виден всем'
 s = endAll(s, ['a', 'b']);
 assert.equal(s.phase, 'harvest');
 const fin = endAll(s, ['a', 'b']);
-assert.equal(fin.turn, 2); assert.equal(fin.phase, 'maneuver'); assert.equal(fin.stage, 'riders'); assert.ok(fin.units.every((u) => !u.tired && !u.blocked));
+assert.equal(fin.phase, 'trade', 'после боя — торговля'); assert.equal(fin.turn, 1);
+const nextTurn = endAll(fin, ['a', 'b']);
+assert.equal(nextTurn.turn, 2); assert.equal(nextTurn.phase, 'maneuver'); assert.equal(nextTurn.stage, 'riders'); assert.ok(nextTurn.units.every((u) => !u.tired && !u.blocked));
 console.log('2. манёвр → снабжение (журнал на каждого) → строительство → добыча → бой → новый ход — ок');
 
 // ---------- 3. нехватка ресурсов ----------
@@ -320,12 +323,78 @@ console.log('10. фаза строительства пропускается, �
 const left = G.removePlayer(endAll(fresh(['a', 'b', 'c']), ['a', 'b']), 'c', lcg(1));
 assert.ok(left.state.phase !== 'maneuver' || left.state.stage !== 'riders', 'ушёл последний, кого ждали: этап пошёл дальше');
 let solo = { ...fresh(['a']), stock: { a: { food: 99, wood: 0, marble: 0, copper: 99 } } };
-for (let turn = 1; turn < G.WIN_TURN; turn++) solo = endAll(endManeuver(solo, ['a']), ['a']);
+for (let turn = 1; turn < G.WIN_TURN; turn++) solo = endAll(endAll(endManeuver(solo, ['a']), ['a']), ['a']);
 assert.equal(solo.winnerId, 'a');
 console.log('11. выход игрока и соло-партия — ок');
 
+// ---------- 11б. торговля с купцами ----------
+const toTrade = (players, seed = 5) => {
+  let g = fresh(players, seed);
+  g = endAll(endManeuver(g, players), players);     // строительство
+  g = endAll(g, players);                           // добыча → бой (автоматически) → торговля
+  assert.equal(g.phase, 'trade'); return g;
+};
+const payWith = (stock, price) => { const give = G.emptyStock(); let left = price; for (const r of G.RESOURCES) { const take = Math.min(left, stock[r]); give[r] = take; left -= take; } return give; };
+const sum = (stock) => G.RESOURCES.reduce((s2, r) => s2 + stock[r], 0);
+const tg = toTrade(['a', 'b']);
+const prices = tg.market.prices;
+assert.equal(prices.length, G.TRADE_OFFERS); assert.ok(prices.every((n) => Number.isInteger(n) && n >= 1 && n <= 6), 'пять значений d6');
+assert.deepEqual(rollPrices(script(die(1), die(2), die(3), die(5), die(6))), [1, 2, 3, 5, 6], 'цены берутся из кубика по порядку');
+const va = G.viewFor(tg, 'a').trade, vb = G.viewFor(tg, 'b').trade;
+assert.deepEqual([va.price, va.accepted, va.offers], [prices[0], [], 5]); assert.equal(vb.price, prices[0], 'порядок цен одинаков для всех');
+assert.ok(!('prices' in va) && G.viewFor(tg, 'a').trade.accepted.length === 0, 'будущие цены скрыты');
+assert.equal(G.viewFor(tg, 'a').market, undefined, 'рынок целиком в снимок не попадает');
+
+// неверные сделки
+const price0 = prices[0], mine = tg.stock.a;
+assert.ok(bad(tg, 'a', { type: 'trade', give: { ...G.emptyStock(), copper: price0 + 1 }, get: 'wood' }).includes('просят ровно'));
+assert.ok(bad(tg, 'a', { type: 'trade', give: G.emptyStock(), get: 'wood' }).includes('просят ровно'));
+assert.ok(bad(tg, 'a', { type: 'trade', give: { ...G.emptyStock(), marble: -1, copper: price0 + 1 }, get: 'wood' }).includes('Некорректное'));
+const noFood = { ...tg, stock: { ...tg.stock, a: { food: 0, wood: 9, marble: 9, copper: 9 } } };
+assert.ok(bad(noFood, 'a', { type: 'trade', give: { ...G.emptyStock(), food: price0 }, get: 'wood' }).includes('Не хватает'), 'сумма верна, но такого ресурса нет');
+assert.ok(bad(fresh(['a', 'b']), 'a', { type: 'trade', give: payWith(mine, price0), get: 'wood' }).includes('фазе торговли'));
+
+// удачная сделка: отдаёт ровно по цене, получает 1 выбранный
+const give0 = payWith(mine, price0);
+const t1 = act(tg, 'a', { type: 'trade', give: give0, get: 'marble' }).state;
+assert.equal(sum(t1.stock.a), sum(mine) - price0 + 1);
+assert.equal(t1.stock.a.marble, mine.marble - give0.marble + 1);
+assert.equal(t1.market.steps.a, 1);
+const v1 = G.viewFor(t1, 'a').trade;
+assert.deepEqual([v1.accepted, v1.price], [[price0], prices[1]], 'следующее предложение — по порядку');
+assert.equal(G.viewFor(t1, 'b').trade.price, prices[0], 'у соперника своё предложение: он ещё ничего не принял');
+assert.deepEqual(G.viewFor(t1, 'b').rivals.a, tg.stock.a, 'запас соперника виден только на конец фазы');
+
+// отказ завершает торговлю игрока; второй игрок торгует независимо
+const refused = act(t1, 'a', { type: 'end_phase' }).state;
+assert.ok(refused.ready.includes('a')); assert.equal(G.viewFor(refused, 'a').trade.price, null);
+assert.ok(bad(refused, 'a', { type: 'trade', give: payWith(refused.stock.a, prices[1]), get: 'wood' }).includes('завершили'), 'после отказа торговать нельзя');
+const bTrade = act(refused, 'b', { type: 'trade', give: payWith(refused.stock.b, price0), get: 'food' }).state;
+assert.equal(bTrade.market.steps.b, 1);
+const turn2 = act(bTrade, 'b', { type: 'end_phase' }).state;
+assert.equal(turn2.turn, 2); assert.equal(turn2.phase, 'maneuver'); assert.equal(turn2.stage, 'riders'); assert.deepEqual(turn2.ready, []);
+assert.deepEqual(G.viewFor(turn2, 'b').rivals.a, turn2.stock.a, 'после фазы запасы соперников обновились');
+
+// до пяти сделок подряд, потом торговля кончается сама
+let rich = { ...tg, stock: { ...tg.stock, a: { food: 99, wood: 99, marble: 99, copper: 99 } } };
+for (let i = 0; i < 5; i++) {
+  assert.ok(!rich.ready.includes('a'), `предложение ${i + 1} доступно`);
+  assert.equal(G.viewFor(rich, 'a').trade.price, prices[i]);
+  rich = act(rich, 'a', { type: 'trade', give: payWith(rich.stock.a, prices[i]), get: 'copper' }).state;
+}
+assert.ok(rich.ready.includes('a'), 'после пяти сделок торговля завершена');
+assert.equal(G.viewFor(rich, 'a').trade.accepted.length, 5);
+assert.equal(G.viewFor(rich, 'a').trade.price, null);
+
+// не хватает ресурсов на текущую цену — торговля заканчивается так же, как отказ
+let poor = endAll(endManeuver(fresh(['a', 'b']), ['a', 'b']), ['a', 'b']);   // фаза добычи
+poor = { ...poor, stock: { ...poor.stock, a: G.emptyStock() } };
+poor = endAll(poor, ['a', 'b']);
+assert.equal(poor.phase, 'trade'); assert.ok(poor.ready.includes('a'), 'у a нечем платить — торговля для него закончена');
+console.log('11б. торговля: общие цены d6 по порядку, скрытое будущее, сделка по цене, отказ, максимум 5 сделок, нехватка ресурсов — ок');
+
 // ---------- 12. 150 случайных партий ----------
-let builds = 0, roadsBuilt = 0, blockedGames = 0; const stageMoves = { riders: 0, roads: 0, march: 0 };
+let builds = 0, roadsBuilt = 0, blockedGames = 0, tradesMade = 0; const stageMoves = { riders: 0, roads: 0, march: 0 };
 const SEEDS = Number(process.env.SEEDS ?? 150);
 for (let seed = 1; seed <= SEEDS; seed++) {
   const players = ['a', 'b', 'c', 'd'].slice(0, 1 + (seed % 4));
@@ -346,6 +415,9 @@ for (let seed = 1; seed <= SEEDS; seed++) {
         while (!G.covers(g.stock[p], G.supplyNeeds(keep)) && keep.length) ids.push(keep.pop().id);
         for (const id of [...ids]) { const back = keep.concat(mine.filter((u) => u.id === id)); if (G.covers(g.stock[p], G.supplyNeeds(back))) { keep.push(mine.find((u) => u.id === id)); ids.splice(ids.indexOf(id), 1); } }
         action = { type: 'drop_unsupplied', unitIds: ids };
+      } else if (g.phase === 'trade') {
+        const price = g.market.prices[g.market.steps[p] ?? 0];
+        if (price !== undefined && rng() < 0.7) { action = { type: 'trade', give: payWith(g.stock[p], price), get: G.RESOURCES[Math.floor(rng() * 4)] }; tradesMade++; }
       } else if (g.phase === 'build') {
         const options = [];
         for (const site of G.buildSites(g, p)) {
@@ -366,5 +438,5 @@ for (let seed = 1; seed <= SEEDS; seed++) {
     }
   }
 }
-if (SEEDS >= 100) assert.ok(builds > 100 && roadsBuilt > 10 && stageMoves.riders > 50 && stageMoves.march > 100 && blockedGames > 0, JSON.stringify({ builds, roadsBuilt, stageMoves, blockedGames }));
-console.log(`12. ${SEEDS} случайных партий: построек ${builds}, дорог ${roadsBuilt}, ходов по этапам ${JSON.stringify(stageMoves)}, шагов со столкновениями ${blockedGames} — без ошибок`);
+if (SEEDS >= 100) assert.ok(tradesMade > 50 && builds > 100 && roadsBuilt > 10 && stageMoves.riders > 50 && stageMoves.march > 100 && blockedGames > 0, JSON.stringify({ builds, roadsBuilt, stageMoves, blockedGames }));
+console.log(`12. ${SEEDS} случайных партий: построек ${builds}, дорог ${roadsBuilt}, ходов по этапам ${JSON.stringify(stageMoves)}, шагов со столкновениями ${blockedGames}, сделок с купцами ${tradesMade} — без ошибок`);

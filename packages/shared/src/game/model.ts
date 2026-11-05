@@ -22,8 +22,10 @@ export type GameSettings = { mapSize: number; mapStyle: MapStyle };
 /** Сколько единиц ресурса приносит одна добыча (случайно, включая границы). */
 export const HARVEST_MIN = 1;
 export const HARVEST_MAX = 3;
-/** Кубик боя. */
+/** Кубик боя и цен на торговле. */
 export const DIE_SIDES = 6;
+/** Сколько предложений у купцов за ход (потолок числа сделок игрока). */
+export const TRADE_OFFERS = 5;
 /** Заглушка условия победы: когда счётчик ходов доходит до этого значения, игра заканчивается. */
 export const WIN_TURN = 3;
 
@@ -98,8 +100,8 @@ export const BUILDINGS: Record<BuildingType, { cost: Partial<Stock> }> = {
   road: { cost: { marble: 1 } },
 };
 
-/** Фазы хода, в которых игроки действуют; последняя, бой, проходит автоматически в конце хода. */
-export const PHASES = ['maneuver', 'supply', 'build', 'harvest'] as const;
+/** Фазы хода, в которых игроки действуют. Между добычей и торговлей автоматически проходит бой. */
+export const PHASES = ['maneuver', 'supply', 'build', 'harvest', 'trade'] as const;
 export type Phase = (typeof PHASES)[number];
 
 /**
@@ -136,6 +138,13 @@ export type Unit = Coord & {
   /** Где юнита видят противники: обновляется только при раскрытии манёвра. */
   revealed: Coord;
 };
+
+/**
+ * Торговля с купцами (банк игры). Цены общие для всех игроков и одинаковые по порядку: каждая — сколько любых своих
+ * ресурсов купцы просят за 1 выбранный. Игрок принимает предложения по порядку, пока не откажется (но не больше
+ * `TRADE_OFFERS` раз); `steps` — сколько предложений он уже принял.
+ */
+export type Market = { prices: number[]; steps: Record<string, number> };
 
 /** Дорога между двумя соседними локациями. Общая: пользоваться ею может любой игрок. */
 export type Road = {
@@ -179,6 +188,8 @@ export type GameState = {
   hexes: Hex[];
   units: Unit[];
   roads: Road[];
+  /** Предложения купцов этого хода (имеют смысл в фазе торговли). */
+  market: Market;
   /** Счётчик для идентификаторов новых юнитов, построек и дорог. */
   nextId: number;
 };
@@ -201,7 +212,7 @@ export type HexView =
     });
 
 /** Состояние партии глазами одного игрока: без чужих тайн. */
-export type GameView = Omit<GameState, 'hexes' | 'units' | 'stock' | 'shownStock' | 'roads' | 'nextId'> & {
+export type GameView = Omit<GameState, 'hexes' | 'units' | 'stock' | 'shownStock' | 'roads' | 'market' | 'nextId'> & {
   hexes: HexView[];
   /** Ваш запас (актуальный). */
   stock: Stock;
@@ -215,6 +226,11 @@ export type GameView = Omit<GameState, 'hexes' | 'units' | 'stock' | 'shownStock
   chains: string[][];
   /** Локации, где вы можете строить на этой фазе строительства (иначе пусто). */
   sites: Coord[];
+  /**
+   * Торговля с купцами на фазе торговли (иначе `null`): уже принятые вами цены и текущее предложение
+   * (`null`, если торговля для вас закончена). Будущие цены скрыты.
+   */
+  trade: { accepted: number[]; price: number | null; offers: number } | null;
 };
 
 export type GameAction =
@@ -224,7 +240,9 @@ export type GameAction =
   | { type: 'drop_unsupplied'; unitIds: string[] }
   /** Строительство в локации `at`; для дороги `to` — соседняя локация, к которой она ведёт. */
   | { type: 'build'; building: BuildingType; at: Coord; to?: Coord }
-  /** Завершить свою часть текущей фазы (этап манёвра, строительство или добычу). */
+  /** Принять текущее предложение купцов: отдать ресурсы `give` (в сумме ровно по цене) и получить 1 ресурс `get`. */
+  | { type: 'trade'; give: Stock; get: Resource }
+  /** Завершить свою часть текущей фазы (этап манёвра, строительство, добычу); на торговле — отказаться от цены. */
   | { type: 'end_phase' };
 
 /** Что произошло в результате действия: сообщается только тому, кто его совершил. */

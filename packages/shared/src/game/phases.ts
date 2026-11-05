@@ -5,6 +5,7 @@ import { canStillMove, syncManeuver } from './maneuver';
 import { emptyStock, MANEUVER_STAGES, WIN_TURN, type GameState, type Report, type Stock } from './model';
 import type { Rng } from './random';
 import { covers, pay, supplyNeeds, supplyReport } from './supply';
+import { canTrade, rollPrices } from './trade';
 
 /** Предохранитель: за одно действие не может пройти больше шагов, чем сыграть за партию. */
 const MAX_STEPS = 100;
@@ -44,6 +45,8 @@ function hasWork(state: GameState, playerId: string): boolean {
       return canBuildAnything(state, playerId);
     case 'harvest':
       return own.some((unit) => canHarvest(state, unit));
+    case 'trade':
+      return canTrade(state, playerId);
     case 'supply':
       return true; // кому хватило ресурсов, тот готов с начала фазы; остальные должны выбрать сами
   }
@@ -68,11 +71,16 @@ function advance(state: GameState, rng: Rng): { state: GameState; reports: Repor
       return { state: reveal({ ...state, units, roads, phase: 'harvest', ready: [] }), reports: [] };
     }
     case 'harvest': {
+      // Бой проходит сразу после добычи; затем — торговля с купцами: цены общие, бросаются в начале фазы.
       const { state: fought, reports } = resolveBattles(state, rng);
-      // Новый ход: все снова могут действовать.
       const units = fought.units.map((unit) => ({ ...unit, tired: false, blocked: false }));
-      const next = { ...fought, units, phase: 'maneuver' as const, stage: 'riders' as const, ready: [], turn: fought.turn + 1 };
-      return { state: reveal(checkTurnLimit(next)), reports };
+      const market = { prices: rollPrices(rng), steps: {} };
+      return { state: reveal({ ...fought, units, market, phase: 'trade', ready: [] }), reports };
+    }
+    case 'trade': {
+      // Конец хода: начинается новый.
+      const next = { ...state, phase: 'maneuver' as const, stage: 'riders' as const, ready: [], turn: state.turn + 1 };
+      return { state: reveal(checkTurnLimit(next)), reports: [] };
     }
   }
 }

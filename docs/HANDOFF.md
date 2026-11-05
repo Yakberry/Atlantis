@@ -70,19 +70,20 @@ packages/
 │     ├─ names.ts        LOCATION_NAMES — список названий суши (≥ MAX_MAP_SIZE уникальных; пользователь заполняет сам)
 │     ├─ supply.ts       supplyNeeds, covers, isValidDrop, dropUnsupplied
 │     ├─ harvest.ts      canHarvest, harvestColony, harvestRemaining (одна цепочка за фазу, авто — наибольшая)
+│     ├─ trade.ts        rollPrices, currentPrice, canTrade, trade — торговля с купцами (общие цены d6, сделки по порядку)
 │     ├─ battle.ts       resolveBattles (бои и осады, отчёты)
 │     ├─ visibility.ts   viewFor — проекция для игрока, canSee
 │     └─ result.ts  labels.ts   ok/fail; русские названия ресурсов (общие для клиента и сервера)
 ├─ shared/smoke/         phases.test.mjs — smoke-тест логики (запуск описан в шапке файла)
 ├─ server/
-│  ├─ migrations/*.sql   001–014 (см. п. 6)
+│  ├─ migrations/*.sql   001–015 (см. п. 6)
 │  └─ src/  index.ts  config.ts  errors.ts
 │     ├─ db/             pool.ts (transaction), migrate.ts
 │     ├─ modules/        players/, rooms/ (repository, service, view, reports), chat/
 │     └─ transport/      http.ts (POST /api/session), socket.ts (все события)
 └─ client/src/
    ├─ views/             LobbyView, RoomView
-   ├─ components/        HexBoard (SVG-карта), GameBoard, ResourceBar, PhaseBar, StockChips, BuildMenu, PlayerList, ChatPanel, LobbySettings, GraphicsToggle
+   ├─ components/        HexBoard (SVG-карта), GameBoard, ResourceBar, PhaseBar, StockChips, BuildMenu, TradePanel, PlayerList, ChatPanel, LobbySettings, GraphicsToggle
    ├─ stores/            session (токен в localStorage), room (сокет, снимок, чат), settings (тоггл графики)
    ├─ composables/       useAction (ошибки действий), usePanZoom (колесо, перетаскивание, щипок)
    ├─ board/             layout (геометрия гексов), palette (цвета), popups, sprites (загрузчик спрайтов)
@@ -107,7 +108,7 @@ packages/
   строительство → добыча (`advance` в `phases.ts`); фильтрация — в `viewFor`.
 - **Виды (`UNIT_KINDS`):** `unit` (обзор 2, ходит по суше), `rider` (всадник: как `unit`, но `fast: true`), `colony` и `fortified_colony` (обзор 1, не ходят, добывают, `colony: true`).
   Все — «юниты» в широком смысле: принадлежат игроку, занимают клетку, участвуют в споре за неё. Свойства-таблица: `supply`, `siegeHit` и др.
-- **Ход = фазы** (`Phase`: maneuver → supply → build → harvest, затем автоматический бой). Фаза идёт, пока не готовы все игроки;
+- **Ход = фазы** (`Phase`: maneuver → supply → build → harvest → trade; между добычей и торговлей автоматически проходит бой). Фаза идёт, пока не готовы все игроки;
   игрок, которому в фазе нечего делать, готов сам (`autoReady` в `phases.ts`). `ready` — готовые в текущей фазе. `settle()` после каждого
   действия двигает ход вперёд сколько можно (цепочка может пройти несколько фаз сразу).
   1. **Манёвр** идёт тремя этапами (`ManeuverStage`, `state.stage`), на каждом юнит делает не больше одного шага (`tired` сбрасывается на новом этапе):
@@ -135,6 +136,11 @@ packages/
      побеждает игрок с наивысшим одиночным броском и уничтожает юнитов остальных; наивысший у ≥2 игроков → ничья. Юниты одного игрока
      против вражеской постройки → осада: бросок d6 ≥ `siegeHit` постройки (колония 4, укреплённая 5) у любого уничтожает её, иначе гибнет
      случайный нападающий. Постройки кубик не бросают; колония проигравшего в бою в тот же ход не осаждается. Результаты — в чат (`audience`).
+  5. **Торговля с купцами** (после боя; для всех одновременно): в начале фазы бросается общий массив из `TRADE_OFFERS` = 5 значений d6
+     (`market.prices`, одинаковый порядок для всех). Игрок видит только текущее предложение и уже принятые цены (`GameView.trade`; будущие
+     скрыты). `trade {give, get}`: игрок отдаёт любые свои ресурсы в сумме ровно по текущей цене (состав выбирает сам) и получает 1 выбранный;
+     следующее предложение — по порядку. Отказ (`end_phase`) завершает его торговлю на ход; не хватает ресурсов на текущую цену или принято
+     5 сделок — торговля заканчивается сама (`canTrade`). Фаза кончается, когда готовы все; затем новый ход. Запас — приватный до конца фазы.
   Запасы: старт `START_STOCK` = 4 еды, 2 леса, 4 мрамора, 4 меди. Запас игрока виден остальным (`GameView.rivals`), но обновляется
   только после каждой фазы (`shownStock`), свой — актуальный. Победа также при уничтожении всех сущностей, кроме одного игрока.
 - **Видимость:** клетку видит владелец, у которого сущность в пределах её обзора. Свои сущности — по реальным позициям (мгновенно),
@@ -150,12 +156,12 @@ packages/
 
 **Клиент → сервер** (все с `Ack`, кроме `room:detach`): `room:create`, `room:join {roomId}` → `{room, history}`,
 `room:leave {roomId}` (выход насовсем), `room:detach` (закрыл экран, остался участником), `room:configure {roomId, mapSize, mapStyle}`,
-`game:start {roomId}`, `game:action {roomId, action}` (`move` / `harvest` / `drop_unsupplied` / `build` / `end_phase`) → `GameEvent[]`, `chat:send {roomId, text}`.
+`game:start {roomId}`, `game:action {roomId, action}` (`move` / `harvest` / `drop_unsupplied` / `build` / `trade` / `end_phase`) → `GameEvent[]`, `chat:send {roomId, text}`.
 **Сервер → клиент:** `room:updated(RoomSnapshot)` (персональный), `chat:message`.
 Авторизация: `POST /api/session {name}` → `{token, player}`; токен уходит в `socket.handshake.auth.token`. Коды комнат — 5 символов без I/O/0/1.
 
 **Таблицы:** `players`, `rooms (id, host_id, status, map_size, game jsonb)`, `room_members`, `messages (…, system bool, player_id null для служебных, audience uuid[])`.
-**Миграции:** 001 схема, 002 системные сообщения, 005 `map_size`, 009 `map_style` + лимит `map_size` до 35, 011 `messages.audience`; 003/004/006/007/008/010/012/013/014 — «сброс»
+**Миграции:** 001 схема, 002 системные сообщения, 005 `map_size`, 009 `map_style` + лимит `map_size` до 35, 011 `messages.audience`; 003/004/006/007/008/010/012/013/014/015 — «сброс»
 (`delete from rooms where game is not null`).
 **Правило:** при несовместимом изменении `GameState` добавлять миграцию-сброс; сохранённые партии старого формата ломают `viewFor`.
 
@@ -191,7 +197,7 @@ node test.mjs   # свои проверки: createGame/applyAction/viewFor на
 
 ## 9. Решения, статус и бэклог
 
-**Принятые решения (не переоткрывать без причины):** старт на разных клетках материка; тип карты по умолчанию `solid` (в `classic` тонкие
+**Принятые решения (не переоткрывать без причины):** торговля идёт после боя (игроки знают итоги боёв), бой — неномерованный автоматический шаг между добычей и торговлей, интерактивные фазы нумеруются 1–5; цены купцов видны по одной (будущие скрыты); отказ или нехватка ресурсов завершают торговлю; старт на разных клетках материка; тип карты по умолчанию `solid` (в `classic` тонкие
 отростки были частой жалобой); острова пока недостижимы (ждут кораблей); один гекс моря по контуру + заливы; суша
 скрывает ресурс до посещения, море нет; спорная граница жёлтая (белая терялась на мраморе); запас ресурсов приватен;
 положение чужих юнитов обновляется только при раскрытии манёвра; тоггл упрощённой графики влияет только на локации;
@@ -201,6 +207,7 @@ node test.mjs   # свои проверки: createGame/applyAction/viewFor на
 
 **Бэклог / идеи (по убыванию очевидности):**
 0. Названия локаций: пользователь заполняет `names.ts` своими (уникальными!) строками.
+0. Торговля: «купцы» — только первый вид торговли («для первой»); дальше — обмен между игроками, разные курсы, рынок с запасом.
 1. **Корабли:** вид `ship` с `terrain: 'sea'` в `UNIT_KINDS`, постройка за ресурсы, перевозка юнитов (море и острова уже есть; после
    появления кораблей можно разрешить старт и на островах).
 2. Трата ресурсов (постройка юнитов/колоний), цели и настоящее условие победы вместо `WIN_TURN = 3` (сейчас игра длится 2 хода).

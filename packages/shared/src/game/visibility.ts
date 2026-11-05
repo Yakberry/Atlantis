@@ -22,6 +22,14 @@ export const canSee = (state: GameState, viewerId: string, cell: Coord): boolean
     (unit) => unit.ownerId === viewerId && distance(unit, cell) <= UNIT_KINDS[unit.kind].vision,
   );
 
+/** Торговля глазами игрока: принятые им цены и текущее предложение; будущие цены он не видит. */
+function tradeView(state: GameState, viewerId: string): NonNullable<GameView['trade']> {
+  const { prices, steps } = state.market;
+  const step = steps[viewerId] ?? 0;
+  const done = state.ready.includes(viewerId);
+  return { accepted: prices.slice(0, step), price: done ? null : (prices[step] ?? null), offers: prices.length };
+}
+
 /**
  * Проекция состояния для одного игрока («туман войны»).
  *
@@ -36,7 +44,7 @@ export const canSee = (state: GameState, viewerId: string, cell: Coord): boolean
  * - Чужие юниты видны там, где их показали при последнем раскрытии манёвра; чужая усталость скрыта.
  */
 export function viewFor(state: GameState, viewerId: string): GameView {
-  const { hexes, units, stock, shownStock, roads, nextId: _nextId, ...rest } = state;
+  const { hexes, units, stock, shownStock, roads, market, nextId: _nextId, ...rest } = state;
   const eyes = units.filter((unit) => unit.ownerId === viewerId);
   const shownRoads = roads.filter((road) => !road.fresh || road.ownerId === viewerId);
 
@@ -49,6 +57,7 @@ export function viewFor(state: GameState, viewerId: string): GameView {
     supply: supplyNeeds(eyes),
     roads: shownRoads.filter((road) => canSee(state, viewerId, road.a) || canSee(state, viewerId, road.b)),
     chains: chainsOf(state, viewerId, shownRoads),
+    trade: state.phase === 'trade' ? tradeView(state, viewerId) : null,
     sites: state.phase === 'build' && !state.ready.includes(viewerId) ? buildSites(state, viewerId) : [],
     hexes: hexes.map((hex) => {
       const { q, r } = hex;
