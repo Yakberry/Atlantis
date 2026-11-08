@@ -22,6 +22,26 @@ export type GameSettings = { mapSize: number; mapStyle: MapStyle };
 /** Сколько единиц ресурса приносит одна добыча (случайно, включая границы). */
 export const HARVEST_MIN = 1;
 export const HARVEST_MAX = 3;
+/** Боевые классы юнитов для таблицы целевых чисел. */
+export type CombatClass = 'phalanx' | 'archer' | 'cavalry' | 'scout' | 'catapult';
+
+/**
+ * Целевые числа атаки: сколько нужно выбросить на d6 (не меньше), чтобы атакующий класс поразил защищающийся.
+ * В неуказанных случаях — `ATTACK_DEFAULT`.
+ */
+export const ATTACK_TARGETS: Record<CombatClass, Partial<Record<CombatClass, number>>> = {
+  phalanx: { cavalry: 3, scout: 3, archer: 5 },
+  archer: { phalanx: 3, scout: 3, cavalry: 5 },
+  cavalry: { archer: 3, scout: 3, phalanx: 5 },
+  scout: { phalanx: 5, archer: 5, cavalry: 5, catapult: 5 },
+  catapult: { phalanx: 5, archer: 5, cavalry: 5 },
+};
+export const ATTACK_DEFAULT = 4;
+/** «Стены» укреплённой колонии: проверка нападающего на допуск к бою. */
+export const WALL_CHECK = 4;
+/** «Башня» укреплённой колонии: целевое число её атаки всегда такое. */
+export const TOWER_TARGET = 4;
+
 /** Кубик боя и цен на торговле. */
 export const DIE_SIDES = 6;
 /** Сколько предложений у купцов за ход (потолок числа сделок игрока). */
@@ -59,8 +79,14 @@ type UnitKindInfo = {
   terrain: Terrain;
   /** Сколько ресурсов вид требует на снабжение каждый ход (любая комбинация). */
   supply: Partial<Stock>;
-  /** Минимальный результат d6, которым осаждающий уничтожает постройку (для не-построек не используется). */
-  siegeHit: number;
+  /** Класс в таблице целевых чисел боя; у построек его нет. */
+  combat: CombatClass | null;
+  /** Сложность поджога постройки (нужно выбросить на d6 не меньше); у не-построек `null`. */
+  burn: number | null;
+  /** «Стены»: нападающие сначала проходят проверку (`WALL_CHECK`) или не участвуют в бою. Не работают против катапульты. */
+  walls: boolean;
+  /** «Башня»: при защитниках в локации сама атакует противников с целевым числом `TOWER_TARGET`. */
+  tower: boolean;
 };
 
 /**
@@ -68,21 +94,35 @@ type UnitKindInfo = {
  * видят вокруг себя, участвуют в споре за локацию); различаются свойствами из этой таблицы.
  */
 export const UNIT_KINDS = {
+  // Фаланга (боевой класс phalanx) и кавалерия — те самые «юнит» и «всадник».
   unit: {
     vision: 2, mobile: true, fast: false, harvests: false, colony: false, building: false, terrain: 'land',
-    supply: { food: 1, copper: 1 }, siegeHit: 4,
+    supply: { food: 1, copper: 1 }, combat: 'phalanx', burn: null, walls: false, tower: false,
   },
   rider: {
     vision: 2, mobile: true, fast: true, harvests: false, colony: false, building: false, terrain: 'land',
-    supply: { food: 1, copper: 1 }, siegeHit: 4,
+    supply: { food: 1, copper: 1 }, combat: 'cavalry', burn: null, walls: false, tower: false,
+  },
+  // Заготовки: нужны таблице боя и правилам про катапульту; пока их нечем создать. Свойства — как у фаланги, ждут уточнений.
+  archer: {
+    vision: 2, mobile: true, fast: false, harvests: false, colony: false, building: false, terrain: 'land',
+    supply: { food: 1, copper: 1 }, combat: 'archer', burn: null, walls: false, tower: false,
+  },
+  scout: {
+    vision: 2, mobile: true, fast: false, harvests: false, colony: false, building: false, terrain: 'land',
+    supply: { food: 1, copper: 1 }, combat: 'scout', burn: null, walls: false, tower: false,
+  },
+  catapult: {
+    vision: 2, mobile: true, fast: false, harvests: false, colony: false, building: false, terrain: 'land',
+    supply: { food: 1, copper: 1 }, combat: 'catapult', burn: null, walls: false, tower: false,
   },
   colony: {
     vision: 1, mobile: false, fast: false, harvests: true, colony: true, building: true, terrain: 'land',
-    supply: { food: 1 }, siegeHit: 4,
+    supply: { food: 1 }, combat: null, burn: 5, walls: false, tower: false,
   },
   fortified_colony: {
     vision: 1, mobile: false, fast: false, harvests: true, colony: true, building: true, terrain: 'land',
-    supply: { food: 1 }, siegeHit: 5,
+    supply: { food: 1 }, combat: null, burn: 6, walls: true, tower: true,
   },
 } as const satisfies Record<string, UnitKindInfo>;
 export type UnitKind = keyof typeof UNIT_KINDS;
@@ -249,8 +289,10 @@ export type GameAction =
 export type GameEvent = { type: 'harvested'; unitId: string; resource: Resource; amount: number };
 
 export type ReportData =
-  | { type: 'battle'; hex: Coord; rolls: Record<string, number[]>; winnerId: string | null; destroyed: number }
-  | { type: 'siege'; hex: Coord; attackerId: string; defenderId: string; rolls: number[]; destroyed: boolean }
+  /** Лог боевых потерь: у каждой стороны — список потерянных юнитов; `stopped` — сколько юнитов не прошли стены. */
+  | { type: 'battle'; hex: Coord; losses: Record<string, UnitKind[]>; stopped: Record<string, number>; tower: boolean }
+  /** Попытка сжечь незащищённую колонию. */
+  | { type: 'burn'; hex: Coord; ownerId: string; kind: UnitKind; rolls: number[]; difficulty: number; burned: boolean }
   | { type: 'unsupplied'; playerId: string; units: number; buildings: number }
   | { type: 'supply'; playerId: string; spent: Stock; left: Stock };
 

@@ -3,7 +3,7 @@ import { MANEUVER_STAGES, PHASES, type ManeuverStage, type Phase } from '@atlant
 
 defineProps<{ phase: Phase; stage: ManeuverStage; turn: number }>();
 
-const STAGE_LABELS: Record<ManeuverStage, string> = { riders: 'всадники', roads: 'дороги', march: 'марш' };
+const STAGE_LABELS: Record<ManeuverStage, string> = { riders: 'кавалерия', roads: 'дороги', march: 'марш' };
 const LABELS: Record<Phase, string> = {
   maneuver: 'Манёвр',
   supply: 'Снабжение',

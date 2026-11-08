@@ -7,7 +7,7 @@
 //   3. скопировать этот файл в /tmp/smoke/out/test.mjs и выполнить: node test.mjs
 import assert from 'node:assert/strict';
 import * as G from './index.js';
-import { resolveBattles } from './battle.js';
+import { resolveBattles, attackTarget } from './battle.js';
 import { harvestColony } from './harvest.js';
 import { rollPrices } from './trade.js';
 import { canStillMove, legalSteps, moveUnit } from './maneuver.js';
@@ -288,22 +288,82 @@ assert.equal(G.viewFor(foreignRoad, 'a').chains.length, 1, 'дороги общ�
 assert.equal(act(foreignRoad, 'a', { type: 'end_phase' }, () => 0.5).events.length, 2, 'добывают обе колонии цепочки');
 console.log('7. цепочки: дороги объединяют колонии, за фазу — одна цепочка, автодобыча берёт наибольшую, чужие дороги не считаются — ок');
 
-// ---------- 8. осада и укреплённая колония ----------
+// ---------- 8. бой: таблица матчапов, обмен атаками, стены, башня, поджог ----------
 const P = { q: 0, r: 0 };
 const bs = (units) => ({ ...fresh(['a', 'b', 'c']), units });
-let r = resolveBattles(bs([unit('a1', 'a', 'unit', P), unit('bc', 'b', 'colony', P)]), script(die(4)));
-assert.ok(r.reports[0].data.destroyed && !r.state.units.some((u) => u.id === 'bc'), 'обычная колония падает от 4');
-r = resolveBattles(bs([unit('a1', 'a', 'unit', P), unit('bf', 'b', 'fortified_colony', P)]), script(die(4), 0));
-assert.ok(!r.reports[0].data.destroyed && r.state.units.some((u) => u.id === 'bf') && !r.state.units.some((u) => u.id === 'a1'), 'укреплённая устояла от 4, нападающий погиб');
-r = resolveBattles(bs([unit('a1', 'a', 'unit', P), unit('bf', 'b', 'fortified_colony', P)]), script(die(5)));
-assert.ok(r.reports[0].data.destroyed && !r.state.units.some((u) => u.id === 'bf'), 'от 5 укреплённая падает');
-console.log('8. осада: обычная колония — от 4, укреплённая — от 5 — ок');
+const ids = (res) => res.state.units.map((u) => u.id);
+const HIGH = () => 0.999, LOW = () => 0;          // d6 = 6 (всегда успех) / d6 = 1 (всегда неудача: минимальная цель 3)
+const T = attackTarget;
+assert.deepEqual([T('unit', 'rider'), T('unit', 'scout'), T('unit', 'archer'), T('unit', 'unit'), T('unit', 'catapult')], [3, 3, 5, 4, 4], 'фаланга');
+assert.deepEqual([T('archer', 'unit'), T('archer', 'scout'), T('archer', 'rider'), T('archer', 'archer')], [3, 3, 5, 4], 'стрелки');
+assert.deepEqual([T('rider', 'archer'), T('rider', 'scout'), T('rider', 'unit'), T('rider', 'rider')], [3, 3, 5, 4], 'кавалерия');
+assert.deepEqual([T('scout', 'unit'), T('scout', 'archer'), T('scout', 'rider'), T('scout', 'catapult'), T('scout', 'scout')], [5, 5, 5, 5, 4], 'разведчики');
+assert.deepEqual([T('catapult', 'unit'), T('catapult', 'archer'), T('catapult', 'rider'), T('catapult', 'scout'), T('catapult', 'catapult')], [5, 5, 5, 4, 4], 'катапульта');
 
-// ---------- 9. бои, разъезд, приватность (как раньше) ----------
-let c = resolveBattles(bs([unit('a1', 'a', 'unit', P), unit('a2', 'a', 'unit', P), unit('b1', 'b', 'unit', P)]), script(die(3), die(5), die(4)));
-assert.deepEqual(c.state.units.map((u) => u.id), ['a1', 'a2']);
-c = resolveBattles(bs([unit('a1', 'a', 'unit', P), unit('b1', 'b', 'unit', P)]), script(die(6), die(6)));
-assert.equal(c.reports[0].data.winnerId, null);
+// каждый юнит успевает атаковать, даже получив смертельную атаку
+let res = resolveBattles(bs([unit('a1', 'a', 'unit', P), unit('b1', 'b', 'unit', P)]), HIGH);
+assert.deepEqual(ids(res), [], 'оба поражены: атаки одновременны');
+// поражённый юнит больше не становится целью (но свою атаку проводит)
+res = resolveBattles(bs([unit('a1', 'a', 'unit', P), unit('a2', 'a', 'unit', P), unit('b1', 'b', 'unit', P)]), HIGH);
+assert.deepEqual(ids(res), ['a1'], 'a1 поразил b1; a2 некого атаковать; b1 всё же атаковал и поразил a2');
+assert.deepEqual([res.reports[0].data.losses.a, res.reports[0].data.losses.b], [['unit'], ['unit']], 'лог потерь у каждой стороны');
+res = resolveBattles(bs([unit('a1', 'a', 'unit', P), unit('b1', 'b', 'unit', P)]), LOW);
+assert.deepEqual(ids(res), ['a1', 'b1'], 'неудачные броски — без потерь');
+assert.deepEqual(Object.keys(res.reports[0].data.losses).sort(), ['a', 'b']); assert.deepEqual(res.reports[0].data.losses.a, []);
+// таблица в деле: фаланга против стрелков бьёт от 5, стрелки по фаланге — от 3
+res = resolveBattles(bs([unit('a1', 'a', 'unit', P), unit('b1', 'b', 'archer', P)]), script(0.99, 0.5, die(4), 0.5, die(3)));
+assert.deepEqual(ids(res), ['b1'], 'фаланга 4 < 5 мимо; стрелки 3 ≥ 3 попали');
+res = resolveBattles(bs([unit('a1', 'a', 'unit', P), unit('b1', 'b', 'archer', P)]), script(0.99, 0.5, die(5), 0.5, die(2)));
+assert.deepEqual(ids(res), ['a1'], 'фаланга 5 ≥ 5 попала; стрелки 2 < 3 мимо');
+res = resolveBattles(bs([unit('a1', 'a', 'rider', P), unit('b1', 'b', 'archer', P)]), script(0.99, 0.5, die(3), 0.5, die(4)));
+assert.deepEqual(ids(res), ['a1'], 'кавалерия бьёт стрелков от 3, стрелки кавалерию — от 5');
+
+// поджог: сложность 5 у колонии, 6 у укреплённой; штрафа за неудачу нет
+for (const [kind, roll, burned] of [['colony', 4, false], ['colony', 5, true], ['fortified_colony', 5, false], ['fortified_colony', 6, true]]) {
+  res = resolveBattles(bs([unit('a1', 'a', 'unit', P), unit('bc', 'b', kind, P)]), script(die(roll)));
+  assert.equal(res.reports.length, 1); assert.equal(res.reports[0].data.type, 'burn');
+  assert.equal(res.state.units.some((u) => u.id === 'bc'), !burned, `${kind} при ${roll}`);
+  assert.ok(res.state.units.some((u) => u.id === 'a1'), 'нападающий цел даже при неудаче');
+}
+res = resolveBattles(bs([unit('a1', 'a', 'unit', P), unit('a2', 'a', 'unit', P), unit('bc', 'b', 'colony', P)]), script(die(2), die(5)));
+assert.ok(!ids(res).includes('bc'), 'каждый юнит бросает, достаточно одного успеха');
+// колония осталась без защитников после боя: сгорает в тот же ход
+res = resolveBattles(bs([unit('a1', 'a', 'unit', P), unit('b1', 'b', 'unit', P), unit('bc', 'b', 'colony', P)]), script(0.99, 0.5, die(6), 0.5, die(1), die(5)));
+assert.deepEqual(ids(res), ['a1'], 'b1 погиб, колония осталась незащищённой и сожжена');
+assert.deepEqual(res.reports.map((x) => x.data.type), ['battle', 'burn']);
+// защищённую колонию не жгут
+res = resolveBattles(bs([unit('a1', 'a', 'unit', P), unit('b1', 'b', 'unit', P), unit('bc', 'b', 'colony', P)]), LOW);
+assert.deepEqual(res.reports.map((x) => x.data.type), ['battle']); assert.ok(ids(res).includes('bc'));
+// две колонии без юнитов — боя нет
+res = resolveBattles(bs([unit('ac', 'a', 'colony', P), unit('bc', 'b', 'colony', P)]), HIGH);
+assert.equal(res.reports.length, 0);
+
+// стены (проверка 4) и башня (цель 4, только при защитниках)
+const fortUnits = () => [unit('a1', 'a', 'unit', P), unit('a2', 'a', 'unit', P), unit('b1', 'b', 'unit', P), unit('bf', 'b', 'fortified_colony', P)];
+res = resolveBattles(bs(fortUnits()), script(die(3), die(4), 0.99, 0.99, 0.5, die(6), 0.5, die(6), die(5)));
+assert.deepEqual(ids(res).sort(), ['a1', 'bf'], 'a1 не прошёл стены, a2 и b1 поразили друг друга');
+const battle = res.reports.find((x) => x.data.type === 'battle').data, burn = res.reports.find((x) => x.data.type === 'burn').data;
+assert.deepEqual([battle.stopped, battle.tower], [{ a: 1 }, true]);
+assert.deepEqual([burn.difficulty, burn.rolls, burn.burned], [6, [5], false], 'остановленный стенами всё равно жжёт; 5 < 6');
+res = resolveBattles(bs(fortUnits()), script(die(3), die(4), 0.99, 0.99, 0.5, die(6), 0.5, die(6), die(6)));
+assert.deepEqual(ids(res), ['a1'], 'укреплённая колония сгорает от 6');
+// катапульта отключает стены; башня стреляет
+res = resolveBattles(bs([unit('a1', 'a', 'catapult', P), unit('b1', 'b', 'unit', P), unit('bf', 'b', 'fortified_colony', P)]), script(0.99, 0.99, 0.5, die(5), 0.5, die(1), 0.5, die(4)));
+assert.deepEqual([res.reports[0].data.stopped, res.reports[0].data.tower], [{}, true], 'стены не работают против катапульты');
+assert.deepEqual(ids(res), ['bf'], 'катапульта (5 ≥ 5) поразила фалангу, башня (4 ≥ 4) — катапульту');
+// без защитников нет ни башни, ни стен: только поджог со сложностью 6
+res = resolveBattles(bs([unit('a1', 'a', 'unit', P), unit('bf', 'b', 'fortified_colony', P)]), script(die(5)));
+assert.deepEqual(res.reports.map((x) => x.data.type), ['burn']); assert.ok(ids(res).includes('bf'));
+// отчёты видят участники и те, кто видит локацию
+const base5 = fresh(['a', 'b', 'c']);
+const distant = base5.hexes.find((h) => G.distance(h, P) >= 4) ?? base5.hexes.at(-1);
+res = resolveBattles(bs([unit('a1', 'a', 'unit', P), unit('b1', 'b', 'unit', P), unit('c1', 'c', 'unit', { q: 1, r: 0 })]), LOW);
+assert.deepEqual(res.reports[0].audience, ['a', 'b', 'c'], 'c рядом и видит бой');
+res = resolveBattles(bs([unit('a1', 'a', 'unit', P), unit('b1', 'b', 'unit', P), unit('c1', 'c', 'unit', distant)]), LOW);
+assert.deepEqual(res.reports[0].audience, ['a', 'b'], 'c далеко и не узнаёт о бое');
+console.log('8. бой: таблица матчапов, одновременные атаки, лог потерь, поджог 5/6, стены, катапульта, башня, аудитория — ок');
+
+// ---------- 9. приватность и видимость дорог ----------
 const priv = fresh(['a', 'b'], 11);
 const before = JSON.stringify(G.viewFor(priv, 'b'));
 const mover = rider(priv, 'a');
@@ -331,7 +391,8 @@ console.log('11. выход игрока и соло-партия — ок');
 const toTrade = (players, seed = 5) => {
   let g = fresh(players, seed);
   g = endAll(endManeuver(g, players), players);     // строительство
-  g = endAll(g, players);                           // добыча → бой (автоматически) → торговля
+  const rng = lcg(seed * 7919);                     // цены купцов бросаются в конце добычи: фиксируем их
+  for (const p of players) if (g.phase === 'harvest' && !g.ready.includes(p)) g = act(g, p, { type: 'end_phase' }, rng).state;
   assert.equal(g.phase, 'trade'); return g;
 };
 const payWith = (stock, price) => { const give = G.emptyStock(); let left = price; for (const r of G.RESOURCES) { const take = Math.min(left, stock[r]); give[r] = take; left -= take; } return give; };
@@ -389,7 +450,9 @@ assert.equal(G.viewFor(rich, 'a').trade.price, null);
 // не хватает ресурсов на текущую цену — торговля заканчивается так же, как отказ
 let poor = endAll(endManeuver(fresh(['a', 'b']), ['a', 'b']), ['a', 'b']);   // фаза добычи
 poor = { ...poor, stock: { ...poor.stock, a: G.emptyStock() } };
-poor = endAll(poor, ['a', 'b']);
+// rng 0.999: автодобыча даёт 3 единицы, а все цены купцов равны 6 — a платить нечем
+poor = act(poor, 'a', { type: 'end_phase' }, () => 0.999).state;
+poor = act(poor, 'b', { type: 'end_phase' }, () => 0.999).state;
 assert.equal(poor.phase, 'trade'); assert.ok(poor.ready.includes('a'), 'у a нечем платить — торговля для него закончена');
 console.log('11б. торговля: общие цены d6 по порядку, скрытое будущее, сделка по цене, отказ, максимум 5 сделок, нехватка ресурсов — ок');
 

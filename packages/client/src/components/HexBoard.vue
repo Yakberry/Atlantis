@@ -8,6 +8,7 @@ import {
   roadBetween,
   sameCell,
   UNIT_KINDS,
+  UNIT_LABELS,
   type BuildingType,
   type Coord,
   type GameView,
@@ -208,11 +209,11 @@ function unitTitle(
 ): string {
   if (unit.droppable) return unit.marked ? 'Останется без снабжения (нажмите, чтобы отменить)' : 'Нажмите, чтобы оставить без снабжения';
   if (!UNIT_KINDS[unit.kind].building) {
-    const name = unit.kind === 'rider' ? 'Всадник' : 'Юнит';
+    const name = UNIT_LABELS[unit.kind];
     if (unit.blocked) return `${name} столкнулся с чужими юнитами и до конца хода не ходит`;
     return unit.tired ? `${name} уже ходил на этом этапе` : name;
   }
-  const name = unit.kind === 'fortified_colony' ? 'Укреплённая колония' : 'Колония';
+  const name = UNIT_LABELS[unit.kind];
   if (unit.captured) return `${name} захвачена: добыча невозможна`;
   if (unit.chainLocked) return `${name} из другой цепочки: за фазу добывают с одной`;
   if (unit.tired) return `${name} уже добывала в этом ходу`;
@@ -296,7 +297,7 @@ function toTile(hex: HexView): Tile {
         sprite: slot === null ? undefined : spriteUrl(`units/${unit.kind}`),
         title: unitTitle({ ...part, chainLocked }),
         selected: unit.id === selectedId.value,
-        // На этапе «всадники» ходят только быстрые юниты; столкнувшиеся не ходят до конца хода.
+        // На этапе «кавалерия» ходят только быстрые юниты; столкнувшиеся не ходят до конца хода.
         selectable:
           idle && props.game.phase === 'maneuver' && info.mobile && unit.blocked !== true && (props.game.stage !== 'riders' || info.fast),
       };

@@ -150,7 +150,7 @@ button.secondary { background: transparent; border-color: var(--line); color: va
 
 /* ---------- Юниты и постройки ---------- */
 .unit.selectable, .unit.harvestable { cursor: pointer; }
-.unit.tired { opacity: 0.4; }
+.unit.tired { opacity: 0.8; }
 .unit .shape { stroke: var(--bg); stroke-width: 3; stroke-linejoin: round; }
 .unit .backdrop { fill: rgba(0, 0, 0, 0.35); }
 .unit.selected .shape { stroke: #fff; stroke-width: 4; }
