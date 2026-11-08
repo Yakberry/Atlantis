@@ -224,19 +224,44 @@ button.secondary { background: transparent; border-color: var(--line); color: va
 /* ---------- Столкновение: юнит до конца хода не ходит ---------- */
 .unit.blocked .shape { stroke: var(--danger); stroke-width: 4; }
 
-/* ---------- Торговля с купцами ---------- */
+/* ---------- Торговля ---------- */
 .phases .auto { font-style: italic; opacity: 0.8; }
+.map-stage { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+/* Окно выдвигается слева поверх трети карты: лежит внутри .map-stage, поэтому карту не двигает и нижние кнопки не закрывает. */
+.trade-window {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  width: 33.333%;
+  min-width: 19rem;
+  overflow: hidden;
+  border-right: 1px solid var(--line);
+  border-radius: 8px 0 0 8px;
+  background: rgba(11, 42, 51, 0.97);
+  box-shadow: 4px 0 14px rgba(0, 0, 0, 0.35);
+}
+.slide-enter-active, .slide-leave-active { transition: transform 0.22s ease; }
+.slide-enter-from, .slide-leave-to { transform: translateX(-100%); }
+@media (prefers-reduced-motion: reduce) {
+  .slide-enter-active, .slide-leave-active { transition: none; }
+}
+.trade-tabs { display: flex; gap: 0.25rem; padding: 0.5rem 0.5rem 0; border-bottom: 1px solid var(--line); }
+.trade-tabs .tab { padding: 0.4rem 0.8rem; border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: transparent; color: var(--muted); }
+.trade-tabs .tab.active { border-bottom-color: var(--accent); color: var(--text); }
+.trade-tabs .close { margin: 0 0 0.25rem auto; padding: 0 0.6rem; line-height: 1.4; }
+.trade-body { flex: 1; min-height: 0; padding: 0.75rem; overflow-y: auto; }
+
 .trade { display: grid; gap: 0.6rem; }
-.trade header { display: flex; justify-content: space-between; gap: 1rem; }
+.trade h2 { font-size: 1.1rem; }
 .trade p { margin: 0; }
 .trade .price { font-size: 1.3em; color: var(--accent); }
-.trade-columns { display: grid; grid-template-columns: 3fr 2fr; gap: 1.5rem; }
 .trade-list { display: grid; gap: 0.3rem; margin: 0.3rem 0 0; padding: 0; list-style: none; }
 .trade-list li { display: flex; align-items: center; gap: 0.5rem; }
-.trade .swatch { display: inline-block; width: 0.8rem; height: 0.8rem; margin-right: 0.4rem; border-radius: 2px; background: var(--resource); }
-.trade-list li > .swatch { margin-right: 0; }
-.trade-name { min-width: 8.5rem; }
+.trade-name { flex: 1; }
 .trade-count { min-width: 1.5ch; text-align: center; font-variant-numeric: tabular-nums; }
 .trade .step { padding: 0.1rem 0.6rem; }
-.trade .pick { display: flex; align-items: center; width: 100%; text-align: left; }
-.trade .pick.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }

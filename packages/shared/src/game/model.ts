@@ -27,7 +27,7 @@ export const DIE_SIDES = 6;
 /** Сколько предложений у купцов за ход (потолок числа сделок игрока). */
 export const TRADE_OFFERS = 5;
 /** Заглушка условия победы: когда счётчик ходов доходит до этого значения, игра заканчивается. */
-export const WIN_TURN = 3;
+export const WIN_TURN = 10;
 
 export const RESOURCES = ['food', 'wood', 'marble', 'copper'] as const;
 export type Resource = (typeof RESOURCES)[number];

@@ -8,7 +8,7 @@ import { useRoomStore } from '../stores/room';
 import { useSessionStore } from '../stores/session';
 import HexBoard from './HexBoard.vue';
 import PhaseBar from './PhaseBar.vue';
-import TradePanel from './TradePanel.vue';
+import TradeWindow, { type TradeTab } from './TradeWindow.vue';
 
 const store = useRoomStore();
 const session = useSessionStore();
@@ -74,7 +74,7 @@ const HINTS: Record<Phase, string> = {
   maneuver: '',
   supply: '',
   build: 'Выберите подсвеченную локацию и постройку в меню внизу. Фаза завершится сама, если строить нечего.',
-  trade: 'Торговля с купцами: принимайте предложения по порядку или откажитесь. Отказ завершает вашу торговлю в этом ходу.',
+  trade: 'Торговля: откройте окно кнопкой «Торговля с купцами» и принимайте ставки по порядку (не больше пяти). «Закончить ход» завершает вашу торговлю.',
   harvest:
     'Нажмите на колонию, чтобы добыть ресурс: за фазу добывают с одной цепочки колоний, соединённых дорогами. «Завершить ход» добудет с наибольшей цепочки. Захваченные колонии не добывают.',
 };
@@ -89,7 +89,7 @@ const END_LABELS: Record<Phase, string> = {
   supply: '',
   build: 'Завершить строительство',
   harvest: 'Завершить ход',
-  trade: '',
+  trade: 'Закончить ход',
 };
 
 const hint = computed(() => {
@@ -106,11 +106,22 @@ const harvest = (colonyId: string) =>
   run(async () => showPopups(await store.sendAction({ type: 'harvest', colonyId })));
 const build = (building: BuildingType, at: Coord, to?: Coord) =>
   run(() => store.sendAction({ type: 'build', building, at, ...(to ? { to } : {}) }));
-/** Текущее предложение купцов, пока игрок торгует. */
-const offer = computed(() => {
-  const trade = game.value?.trade;
-  return game.value?.phase === 'trade' && !store.isReady && trade && trade.price !== null ? { ...trade, price: trade.price } : null;
-});
+// ---------- торговля: окно выдвигается слева поверх карты ----------
+const trade = computed(() => (game.value?.phase === 'trade' && !game.value.winnerId ? game.value.trade : null));
+const tradeOpen = ref(false);
+const tradeTab = ref<TradeTab>('merchants');
+/** Кнопка открывает окно на своей вкладке; повторное нажатие на ту же вкладку закрывает его. */
+const openTrade = (tab: TradeTab) => {
+  tradeOpen.value = !(tradeOpen.value && tradeTab.value === tab);
+  tradeTab.value = tab;
+};
+// Окно закрывается, когда торговать больше нельзя: фаза кончилась или игрок закончил ход.
+watch(
+  () => [game.value?.phase, store.isReady],
+  () => {
+    if (!trade.value || store.isReady) tradeOpen.value = false;
+  },
+);
 const tradeWith = (give: Stock, get: Resource) => run(() => store.sendAction({ type: 'trade', give, get }));
 const endPhase = () => run(async () => showPopups(await store.sendAction({ type: 'end_phase' })));
 const confirmDrop = () =>
@@ -124,19 +135,28 @@ const confirmDrop = () =>
   <section v-if="game" class="game">
     <PhaseBar :phase="game.phase" :stage="game.stage" :turn="game.turn" />
 
-    <HexBoard
-      :game="game"
-      :viewer-id="me"
-      :popups="popups"
-      :picking="picking"
-      :unsupplied="unsupplied"
-      @move="move"
-      @harvest="harvest"
-      @build="build"
-      @toggle-supply="toggleSupply"
-    />
-
-    <TradePanel v-if="offer" :trade="offer" :stock="game.stock" @accept="tradeWith" @decline="endPhase" />
+    <div class="map-stage">
+      <HexBoard
+        :game="game"
+        :viewer-id="me"
+        :popups="popups"
+        :picking="picking"
+        :unsupplied="unsupplied"
+        @move="move"
+        @harvest="harvest"
+        @build="build"
+        @toggle-supply="toggleSupply"
+      />
+      <TradeWindow
+        v-if="trade"
+        v-model:tab="tradeTab"
+        :open="tradeOpen"
+        :trade="trade"
+        :stock="game.stock"
+        @close="tradeOpen = false"
+        @accept="tradeWith"
+      />
+    </div>
 
     <div class="turnbar">
       <template v-if="game.winnerId">
@@ -152,9 +172,17 @@ const confirmDrop = () =>
           </span>
           <button :disabled="!dropIsValid" @click="confirmDrop">Подтвердить выбор</button>
         </template>
-        <button v-else-if="game.phase !== 'supply' && game.phase !== 'trade'" :disabled="store.isReady" @click="endPhase">
-          {{ END_LABELS[game.phase] }}
-        </button>
+        <template v-else-if="game.phase !== 'supply'">
+          <template v-if="game.phase === 'trade' && trade">
+            <button class="secondary" type="button" :disabled="store.isReady" @click="openTrade('merchants')">
+              Торговля с купцами ({{ trade.price ?? '—' }})
+            </button>
+            <button class="secondary" type="button" :disabled="store.isReady" @click="openTrade('players')">
+              Торговля с игроками
+            </button>
+          </template>
+          <button :disabled="store.isReady" @click="endPhase">{{ END_LABELS[game.phase] }}</button>
+        </template>
       </template>
     </div>
 
