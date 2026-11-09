@@ -140,8 +140,8 @@ export const BUILDINGS: Record<BuildingType, { cost: Partial<Stock> }> = {
   road: { cost: { marble: 1 } },
 };
 
-/** Фазы хода, в которых игроки действуют. Между добычей и торговлей автоматически проходит бой. */
-export const PHASES = ['maneuver', 'supply', 'build', 'harvest', 'trade'] as const;
+/** Фазы хода. Бой идёт сразу после манёвра и начинается, когда все игроки подтвердили (если спорных локаций нет, фаза пропускается). */
+export const PHASES = ['maneuver', 'battle', 'supply', 'build', 'harvest', 'trade'] as const;
 export type Phase = (typeof PHASES)[number];
 
 /**

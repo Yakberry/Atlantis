@@ -26,8 +26,16 @@ export function attackTarget(attacker: UnitKind, defender: UnitKind): number {
 
 type Attacker = { ownerId: string; kind: UnitKind; tower: boolean };
 
+/** Есть ли спорные локации, где пройдёт бой или поджог (нужен хотя бы один юнит, не постройка). Иначе фаза боя пропускается. */
+export function hasPendingBattle(state: GameState): boolean {
+  return state.hexes.some((hex) => {
+    const here = state.units.filter((unit) => sameCell(unit, hex));
+    return new Set(here.map((unit) => unit.ownerId)).size >= 2 && here.some((unit) => !isBuilding(unit));
+  });
+}
+
 /**
- * Бой в конце хода. В каждой спорной локации (сущности ≥2 игроков):
+ * Фаза боя (после манёвра, когда все игроки подтвердили). В каждой спорной локации (сущности ≥2 игроков):
  *
  * 1. «Стены». Если у владельца укреплённой колонии в локации есть защитники и у нападающих (юнитов других игроков)
  *    нет катапульты, каждый нападающий бросает d6: меньше WALL_CHECK — он в бою не участвует (ни атакует, ни цель).

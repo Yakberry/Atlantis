@@ -125,6 +125,7 @@ function perform(state: GameState, playerId: string, action: GameAction, rng: Rn
     case 'end_phase':
       switch (state.phase) {
         case 'maneuver':
+        case 'battle': // подтверждение начала боёв
         case 'build':
         case 'trade': // на торговле это отказ от текущей цены
           return ok({ ...state, ready: [...state.ready, playerId] });

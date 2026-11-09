@@ -1,4 +1,4 @@
-import { resolveBattles } from './battle';
+import { hasPendingBattle, resolveBattles } from './battle';
 import { canBuildAnything } from './build';
 import { canHarvest } from './harvest';
 import { canStillMove, syncManeuver } from './maneuver';
@@ -45,6 +45,8 @@ function hasWork(state: GameState, playerId: string): boolean {
       return canBuildAnything(state, playerId);
     case 'harvest':
       return own.some((unit) => canHarvest(state, unit));
+    case 'battle':
+      return hasPendingBattle(state); // подтверждать нужно, только если бои предстоят
     case 'trade':
       return canTrade(state, playerId);
     case 'supply':
@@ -55,12 +57,17 @@ function hasWork(state: GameState, playerId: string): boolean {
 function advance(state: GameState, rng: Rng): { state: GameState; reports: Report[] } {
   switch (state.phase) {
     case 'maneuver': {
-      // Конец этапа: синхронизация, затем следующий этап или, если этапы кончились, снабжение.
+      // Конец этапа: синхронизация, затем следующий этап или, если этапы кончились, бой.
       const synced = syncManeuver(state, rng);
       const following = MANEUVER_STAGES[MANEUVER_STAGES.indexOf(synced.stage) + 1];
       if (following) return { state: { ...synced, stage: following, ready: [] }, reports: [] };
-      const entered = enterSupply(synced);
-      return { state: reveal(entered.state), reports: entered.reports };
+      return { state: reveal({ ...synced, phase: 'battle', ready: [] }), reports: [] };
+    }
+    case 'battle': {
+      // Все подтвердили: бои проходят, затем снабжение выживших.
+      const { state: fought, reports } = resolveBattles(state, rng);
+      const entered = enterSupply(fought);
+      return { state: reveal(entered.state), reports: [...reports, ...entered.reports] };
     }
     case 'supply':
       return { state: reveal({ ...state, phase: 'build', ready: [] }), reports: [] };
@@ -71,11 +78,10 @@ function advance(state: GameState, rng: Rng): { state: GameState; reports: Repor
       return { state: reveal({ ...state, units, roads, phase: 'harvest', ready: [] }), reports: [] };
     }
     case 'harvest': {
-      // Бой проходит сразу после добычи; затем — торговля с купцами: цены общие, бросаются в начале фазы.
-      const { state: fought, reports } = resolveBattles(state, rng);
-      const units = fought.units.map((unit) => ({ ...unit, tired: false, blocked: false }));
+      // Затем — торговля с купцами: цены общие, бросаются в начале фазы.
+      const units = state.units.map((unit) => ({ ...unit, tired: false, blocked: false }));
       const market = { prices: rollPrices(rng), steps: {} };
-      return { state: reveal({ ...fought, units, market, phase: 'trade', ready: [] }), reports };
+      return { state: reveal({ ...state, units, market, phase: 'trade', ready: [] }), reports: [] };
     }
     case 'trade': {
       // Конец хода: начинается новый.
