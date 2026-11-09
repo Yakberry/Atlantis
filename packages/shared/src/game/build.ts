@@ -2,6 +2,8 @@ import { neighbors, sameCell, distance, type Coord } from './hex';
 import {
   BUILDINGS,
   emptyStock,
+  isSpecialBuilding,
+  SPECIAL_BUILDINGS,
   UNIT_KINDS,
   type Applied,
   type BuildingType,
@@ -27,6 +29,7 @@ export const fullCost = (building: BuildingType): Stock => ({ ...emptyStock(), .
 
 const hexAt = (state: GameState, cell: Coord): Hex | undefined => state.hexes.find((hex) => sameCell(hex, cell));
 const entitiesAt = (state: GameState, cell: Coord): Unit[] => state.units.filter((unit) => sameCell(unit, cell));
+const isCoastal = (state: GameState, cell: Coord) => neighbors(cell).some((next) => hexAt(state, next)?.type === 'sea');
 const hasColony = (units: readonly Unit[]) => units.some((unit) => UNIT_KINDS[unit.kind].colony);
 
 /**
@@ -62,12 +65,23 @@ export function canBuildAnything(state: GameState, playerId: string): boolean {
   const stock = state.stock[playerId] ?? emptyStock();
   const affordable = (building: BuildingType) => covers(stock, fullCost(building));
   const sites = buildSites(state, playerId);
+  const canSpecial = (building: BuildingType) =>
+    affordable(building) &&
+    sites.some((cell) => {
+      const here = entitiesAt(state, cell);
+      return (
+        here.some((u) => u.ownerId === playerId && UNIT_KINDS[u.kind].colony) &&
+        !here.some((u) => isSpecialBuilding(u.kind)) &&
+        (building !== 'fleet' || isCoastal(state, cell))
+      );
+    });
 
   return (
     (affordable('colony') && sites.some((cell) => !hasColony(entitiesAt(state, cell)))) ||
     (affordable('fortified_colony') &&
       sites.some((cell) => entitiesAt(state, cell).some((u) => u.kind === 'colony' && u.ownerId === playerId))) ||
-    (affordable('road') && sites.some((cell) => roadTargets(state, playerId, cell).length > 0))
+    (affordable('road') && sites.some((cell) => roadTargets(state, playerId, cell).length > 0)) ||
+    SPECIAL_BUILDINGS.some(canSpecial)
   );
 }
 
@@ -113,6 +127,17 @@ export function build(state: GameState, playerId: string, action: BuildAction): 
       };
       return ok({ ...next, units: state.units.map((unit) => (unit.id === colony.id ? upgraded : unit)) });
     }
+
+    case 'fleet':
+    case 'guild':
+    case 'market':
+    case 'barracks':
+      if (!here.some((u) => u.ownerId === playerId && UNIT_KINDS[u.kind].colony)) {
+        return fail('Особое здание строится только в локации, где уже стоит ваша колония');
+      }
+      if (here.some((u) => isSpecialBuilding(u.kind))) return fail('В этой локации уже есть особое здание');
+      if (building === 'fleet' && !isCoastal(state, at)) return fail('Флот строится только на прибрежной локации');
+      return ok({ ...next, units: [...state.units, spawn(state, building, playerId, at)] });
 
     case 'road': {
       const { to } = action;

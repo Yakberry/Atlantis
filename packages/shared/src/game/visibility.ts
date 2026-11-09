@@ -1,5 +1,6 @@
 import { distance, sameCell, type Coord } from './hex';
 import { buildSites } from './build';
+import { currentPrice, effectivePrice } from './trade';
 import { chainsOf } from './harvest';
 import { supplyNeeds } from './supply';
 import { emptyStock, terrainOf, UNIT_KINDS, type GameState, type GameView, type Hex, type Unit, type UnitView } from './model';
@@ -27,7 +28,11 @@ function tradeView(state: GameState, viewerId: string): NonNullable<GameView['tr
   const { prices, steps } = state.market;
   const step = steps[viewerId] ?? 0;
   const done = state.ready.includes(viewerId);
-  return { accepted: prices.slice(0, step), price: done ? null : (prices[step] ?? null), offers: prices.length };
+  return {
+    accepted: prices.slice(0, step).map((rolled) => effectivePrice(state, viewerId, rolled)),
+    price: done ? null : (currentPrice(state, viewerId) ?? null),
+    offers: prices.length,
+  };
 }
 
 /**

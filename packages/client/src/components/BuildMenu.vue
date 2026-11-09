@@ -8,7 +8,7 @@ export type BuildCard = { type: BuildingType; cost: Stock; disabled: boolean; re
 defineProps<{ title: string; cards: BuildCard[]; roadMode: boolean }>();
 const emit = defineEmits<{ pick: [type: BuildingType]; close: [] }>();
 
-const INFO: Record<BuildingType, { name: string; hint: string; glyph: string }> = {
+const INFO: Record<BuildingType, { name: string; hint: string; glyph?: string }> = {
   colony: { name: 'Колония', hint: 'Добывает 1–3 ресурса своей локации. Снабжение: 1 еда. Не больше одной на локацию. Если в ней не осталось защитников, её жгут: чужому юниту нужно выбросить 5.', glyph: '⌂' },
   fortified_colony: {
     name: 'Укреплённая колония',
@@ -20,6 +20,14 @@ const INFO: Record<BuildingType, { name: string; hint: string; glyph: string }> 
     hint: 'Проходит между двумя локациями. Юнит, прошедший по ней, в этот ход может сделать ещё один шаг. Соединяет колонии в цепочку.',
     glyph: '═',
   },
+  // Новые здания: только спрайт, без запасных значков.
+  fleet: { name: 'Флот', hint: 'Строится на побережье в локации с вашей колонией. Производит d6 пищи. Снабжение: 1 лес и 1 медь.' },
+  guild: {
+    name: 'Гильдия',
+    hint: 'Улучшает добычу всех ваших колоний, добывающих тот же ресурс, что эта локация: с d3 до d6. Снабжение: 1 лес и 1 медь.',
+  },
+  market: { name: 'Рыночная площадь', hint: 'Снижает цены купцов с d6 до d3. Снабжение: 1 лес и 1 медь.' },
+  barracks: { name: 'Казармы', hint: 'Позволяют строить юнитов в этой локации. Снабжения не требуют.' },
 };
 
 const art = (type: BuildingType) => spriteUrl(`buildings/${type}`);

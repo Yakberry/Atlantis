@@ -5,6 +5,7 @@ import {
   distance,
   fullCost,
   isCaptured,
+  isSpecialBuilding,
   roadBetween,
   sameCell,
   UNIT_KINDS,
@@ -142,6 +143,12 @@ const selected = computed(() => {
 
 const settings = useSettingsStore();
 
+/** Колония, к цепочке которой относится добывающее здание: оно само или колония его владельца в той же локации. */
+const anchorId = (
+  units: readonly { id: string; ownerId: string; kind: UnitKind }[],
+  unit: { id: string; ownerId: string; kind: UnitKind },
+) => (UNIT_KINDS[unit.kind].colony ? unit.id : units.find((u) => u.ownerId === unit.ownerId && UNIT_KINDS[u.kind].colony)?.id);
+
 const colorOf = (playerId: string) => playerColor(props.game.slots[playerId] ?? -1);
 const slotIndexes = computed(() => Object.values(props.game.slots));
 
@@ -150,7 +157,7 @@ const harvestedChain = computed(() => {
   for (const hex of props.game.hexes) {
     if (!hex.visible) continue;
     const done = hex.units.find((u) => u.ownerId === props.viewerId && UNIT_KINDS[u.kind].harvests && u.tired);
-    if (done) return props.game.chains.find((chain) => chain.includes(done.id));
+    if (done) return props.game.chains.find((chain) => chain.includes(anchorId(hex.units, done) ?? ''));
   }
   return undefined;
 });
@@ -179,6 +186,12 @@ const buildCards = computed<BuildCard[]>(() => {
     else if (type === 'colony' && hex.units.some((u) => UNIT_KINDS[u.kind].colony)) reason = 'В этой локации уже есть колония';
     else if (type === 'fortified_colony' && !hex.units.some((u) => u.kind === 'colony' && u.ownerId === props.viewerId)) {
       reason = 'Нужна ваша обычная колония в этой локации';
+    } else if (isSpecialBuilding(type) && !hex.units.some((u) => UNIT_KINDS[u.kind].colony && u.ownerId === props.viewerId)) {
+      reason = 'Сначала постройте колонию в этой локации';
+    } else if (isSpecialBuilding(type) && hex.units.some((u) => isSpecialBuilding(u.kind))) {
+      reason = 'В этой локации уже есть особое здание';
+    } else if (type === 'fleet' && !props.game.hexes.some((h) => h.visible && h.terrain === 'sea' && distance(h, hex) === 1)) {
+      reason = 'Флот строится только на побережье';
     } else if (type === 'road' && roadTargets.value.length === 0) reason = 'Нет соседней локации, доступной для строительства, без дороги';
     return { type, cost, disabled: reason !== '', reason };
   });
@@ -214,9 +227,9 @@ function unitTitle(
     return unit.tired ? `${name} уже ходил на этом этапе` : name;
   }
   const name = UNIT_LABELS[unit.kind];
-  if (unit.captured) return `${name} захвачена: добыча невозможна`;
+  if (unit.captured) return `${name}: локация захвачена, добыча невозможна`;
   if (unit.chainLocked) return `${name} из другой цепочки: за фазу добывают с одной`;
-  if (unit.tired) return `${name} уже добывала в этом ходу`;
+  if (unit.tired) return `${name}: уже добыто в этом ходу`;
   return unit.harvestable ? 'Нажмите, чтобы добыть ресурс' : name;
 }
 
@@ -278,7 +291,7 @@ function toTile(hex: HexView): Tile {
       const idle = mine && canAct.value && !unit.tired;
       const captured = info.harvests && isCaptured(unit.ownerId, hex.units);
       const harvestPhase = idle && props.game.phase === 'harvest' && info.harvests && !captured;
-      const chainLocked = harvestPhase && harvestedChain.value !== undefined && !harvestedChain.value.includes(unit.id);
+      const chainLocked = harvestPhase && harvestedChain.value !== undefined && !harvestedChain.value.includes(anchorId(hex.units, unit) ?? '');
       const part = {
         kind: unit.kind,
         tired: unit.tired === true,
@@ -431,13 +444,13 @@ function onTileClick(tile: Tile) {
           <circle v-if="(unit.selectable || unit.harvestable) && !unit.selected" r="17" class="halo" />
           <template v-if="unit.sprite">
             <foreignObject x="-13" y="-13" width="26" height="26">
-              <UnitIcon :src="unit.sprite" :color="playerColor(unit.slot)" />
+              <UnitIcon :src="unit.sprite" :color="playerColor(unit.slot) :border-color" />
             </foreignObject>
           </template>
           <polygon v-else-if="unit.kind === 'fortified_colony'" :points="FORT_POINTS" :fill="unit.color" class="shape fort" />
           <polygon v-else-if="unit.kind === 'colony'" :points="COLONY_POINTS" :fill="unit.color" class="shape" />
           <polygon v-else-if="unit.kind === 'rider'" :points="RIDER_POINTS" :fill="unit.color" class="shape" />
-          <circle v-else r="11" :fill="unit.color" class="shape" />
+          <circle v-else-if="!isSpecialBuilding(unit.kind)" r="11" :fill="unit.color" class="shape" />
           <title>{{ unit.title }}</title>
         </g>
         <text v-if="tile.name" y="21" class="tile-name">{{ tile.name }}</text>

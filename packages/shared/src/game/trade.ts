@@ -10,8 +10,14 @@ export const rollPrices = (rng: Rng): number[] =>
 const total = (stock: Stock): number => RESOURCES.reduce((sum, resource) => sum + stock[resource], 0);
 
 /** Текущее предложение игрока (`undefined`, если он принял все). */
-export const currentPrice = (state: GameState, playerId: string): number | undefined =>
-  state.market.prices[state.market.steps[playerId] ?? 0];
+export const currentPrice = (state: GameState, playerId: string): number | undefined => {
+  const rolled = state.market.prices[state.market.steps[playerId] ?? 0];
+  return rolled === undefined ? undefined : effectivePrice(state, playerId, rolled);
+};
+
+/** Рыночная площадь снижает цены с d6 до d3: брошенное значение делится пополам с округлением вверх. */
+export const effectivePrice = (state: GameState, playerId: string, rolled: number): number =>
+  state.units.some((unit) => unit.ownerId === playerId && unit.kind === 'market') ? Math.ceil(rolled / 2) : rolled;
 
 /** Торговля для игрока ещё возможна: предложение есть, и ему хватает ресурсов, чтобы его принять. */
 export function canTrade(state: GameState, playerId: string): boolean {

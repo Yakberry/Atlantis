@@ -1,13 +1,15 @@
 import { sameCell } from './hex';
 import {
   emptyStock,
+  FLEET_HARVEST_DIE,
+  GUILD_HARVEST_DIE,
   HARVEST_MAX,
-  HARVEST_MIN,
   isCaptured,
   UNIT_KINDS,
   type Applied,
   type GameEvent,
   type GameState,
+  type Resource,
   type Result,
   type Road,
   type Unit,
@@ -17,8 +19,8 @@ import { fail, ok } from './result';
 import { colonyChains } from './roads';
 
 const hexOf = (state: GameState, unit: Unit) => state.hexes.find((hex) => sameCell(hex, unit));
-const isCapturedNow = (state: GameState, colony: Unit) =>
-  isCaptured(colony.ownerId, state.units.filter((unit) => sameCell(unit, colony)));
+const isCapturedNow = (state: GameState, unit: Unit) =>
+  isCaptured(unit.ownerId, state.units.filter((other) => sameCell(other, unit)));
 
 /** Цепочки колоний игрока: колонии, соединённые дорогами (дороги общие, любого игрока). */
 export function chainsOf(state: GameState, playerId: string, roads: readonly Road[] = state.roads): string[][] {
@@ -26,88 +28,103 @@ export function chainsOf(state: GameState, playerId: string, roads: readonly Roa
   return colonyChains(colonies, roads);
 }
 
+/** Колония, к цепочке которой относится добывающее здание: оно само или колония его владельца в той же локации. */
+const anchorOf = (state: GameState, unit: Unit): Unit | undefined =>
+  UNIT_KINDS[unit.kind].colony
+    ? unit
+    : state.units.find((u) => u.ownerId === unit.ownerId && UNIT_KINDS[u.kind].colony && sameCell(u, unit));
+
 /** За фазу добычи можно добывать только с одной цепочки: той, с которой игрок уже добыл. */
 function activeChain(state: GameState, playerId: string): string[] | undefined {
   const harvested = state.units.find((u) => u.ownerId === playerId && UNIT_KINDS[u.kind].harvests && u.tired);
-  return harvested && chainsOf(state, playerId).find((chain) => chain.includes(harvested.id));
+  const anchor = harvested && anchorOf(state, harvested);
+  return anchor && chainsOf(state, playerId).find((chain) => chain.includes(anchor.id));
 }
 
-/** Колония может добывать: ещё не добывала, не захвачена, стоит на суше и входит в выбранную цепочку. */
-export function canHarvest(state: GameState, colony: Unit): boolean {
-  const hex = hexOf(state, colony);
-  const chain = activeChain(state, colony.ownerId);
+/** Добывающее здание (колония или флот) может добывать: не добывало, не захвачено, на суше, с колонией в цепочке. */
+export function canHarvest(state: GameState, unit: Unit): boolean {
+  const hex = hexOf(state, unit);
+  const anchor = anchorOf(state, unit);
+  const chain = activeChain(state, unit.ownerId);
   return (
-    UNIT_KINDS[colony.kind].harvests &&
-    !colony.tired &&
+    UNIT_KINDS[unit.kind].harvests &&
+    !unit.tired &&
     hex !== undefined &&
     hex.type !== 'sea' &&
-    !isCapturedNow(state, colony) &&
-    (!chain || chain.includes(colony.id))
+    anchor !== undefined &&
+    !isCapturedNow(state, unit) &&
+    (!chain || chain.includes(anchor.id))
   );
 }
 
-/** Добыча одной колонией; проверки делает вызывающий. */
-function collect(state: GameState, colony: Unit, rng: Rng): { state: GameState; event: GameEvent } {
-  const hex = hexOf(state, colony);
-  if (!hex || hex.type === 'sea') throw new Error('Колония стоит не на суше');
-  const resource = hex.type;
-  const amount = HARVEST_MIN + Math.floor(rng() * (HARVEST_MAX - HARVEST_MIN + 1));
-  const mine = state.stock[colony.ownerId] ?? emptyStock();
+/** Сколько граней у кубика добычи: колония d3 (d6 при гильдии на таком же ресурсе), флот d6. */
+function harvestDie(state: GameState, unit: Unit, resource: Resource): number {
+  if (!UNIT_KINDS[unit.kind].colony) return FLEET_HARVEST_DIE;
+  const boosted = state.units.some(
+    (u) => u.ownerId === unit.ownerId && u.kind === 'guild' && hexOf(state, u)?.type === resource,
+  );
+  return boosted ? GUILD_HARVEST_DIE : HARVEST_MAX;
+}
+
+/** Добыча одним зданием; проверки делает вызывающий. Колония даёт ресурс своей локации, флот — пищу. */
+function collect(state: GameState, unit: Unit, rng: Rng): { state: GameState; event: GameEvent } {
+  const hex = hexOf(state, unit);
+  if (!hex || hex.type === 'sea') throw new Error('Добывающее здание стоит не на суше');
+  const resource: Resource = UNIT_KINDS[unit.kind].colony ? hex.type : 'food';
+  const amount = 1 + Math.floor(rng() * harvestDie(state, unit, resource));
+  const mine = state.stock[unit.ownerId] ?? emptyStock();
 
   return {
     state: {
       ...state,
-      stock: { ...state.stock, [colony.ownerId]: { ...mine, [resource]: mine[resource] + amount } },
-      units: state.units.map((u) => (u.id === colony.id ? { ...u, tired: true } : u)),
+      stock: { ...state.stock, [unit.ownerId]: { ...mine, [resource]: mine[resource] + amount } },
+      units: state.units.map((u) => (u.id === unit.id ? { ...u, tired: true } : u)),
     },
-    event: { type: 'harvested', unitId: colony.id, resource, amount },
+    event: { type: 'harvested', unitId: unit.id, resource, amount },
   };
 }
 
-/** Колония раз в ход приносит от HARVEST_MIN до HARVEST_MAX единиц ресурса своей локации. */
-export function harvestColony(state: GameState, playerId: string, colonyId: string, rng: Rng): Result<Applied> {
-  const colony = state.units.find((u) => u.id === colonyId && u.ownerId === playerId);
-  if (!colony) return fail('Это не ваша постройка');
-  if (!UNIT_KINDS[colony.kind].harvests) return fail('Эта сущность ничего не добывает');
-  if (colony.tired) return fail('Колония уже добывала в этом ходу');
-  if (isCapturedNow(state, colony)) return fail('Колония захвачена: добыча невозможна');
+export function harvestColony(state: GameState, playerId: string, unitId: string, rng: Rng): Result<Applied> {
+  const unit = state.units.find((u) => u.id === unitId && u.ownerId === playerId);
+  if (!unit) return fail('Это не ваша постройка');
+  if (!UNIT_KINDS[unit.kind].harvests) return fail('Эта сущность ничего не добывает');
+  if (unit.tired) return fail('Здание уже добывало в этом ходу');
+  if (isCapturedNow(state, unit)) return fail('Локация захвачена: добыча невозможна');
+  const anchor = anchorOf(state, unit);
   const chain = activeChain(state, playerId);
-  if (chain && !chain.includes(colony.id)) return fail('За одну фазу можно добывать только с одной цепочки колоний');
-  if (!canHarvest(state, colony)) return fail('Здесь нечего добывать');
+  if (anchor && chain && !chain.includes(anchor.id)) return fail('За одну фазу можно добывать только с одной цепочки колоний');
+  if (!canHarvest(state, unit)) return fail('Здесь нечего добывать');
 
-  const { state: next, event } = collect(state, colony, rng);
+  const { state: next, event } = collect(state, unit, rng);
   return ok(next, [event]);
 }
 
 /**
- * «Завершить ход»: игрок добывает со всех колоний своей цепочки, которые ещё могут добывать.
- * Если он уже начал добычу — это та же цепочка, иначе выбирается наибольшая (по числу колоний, способных добывать).
+ * «Завершить ход»: игрок добывает со всех зданий своей цепочки, которые ещё могут добывать (колонии и флот).
+ * Если он уже начал добычу — это та же цепочка, иначе выбирается наибольшая (по числу зданий, способных добывать).
  */
 export function harvestRemaining(state: GameState, playerId: string, rng: Rng): { state: GameState; events: GameEvent[] } {
-  const own = state.units.filter((u) => u.ownerId === playerId);
-  const ready = (current: GameState, id: string) => {
-    const colony = current.units.find((u) => u.id === id);
-    return colony !== undefined && canHarvest(current, colony);
+  const own = state.units.filter((u) => u.ownerId === playerId && UNIT_KINDS[u.kind].harvests);
+  const members = (chain: string[]) => own.filter((u) => chain.includes(anchorOf(state, u)?.id ?? ''));
+  const workable = (current: GameState, u: Unit) => {
+    const fresh = current.units.find((x) => x.id === u.id);
+    return fresh !== undefined && canHarvest(current, fresh);
   };
 
   let chain = activeChain(state, playerId);
   if (!chain) {
-    const workable = chainsOf(state, playerId).map((candidate) => ({
-      candidate,
-      size: candidate.filter((id) => own.some((u) => u.id === id) && ready(state, id)).length,
-    }));
-    chain = workable.reduce<{ candidate: string[]; size: number } | undefined>(
-      (best, option) => (option.size > (best?.size ?? 0) ? option : best),
-      undefined,
-    )?.candidate;
+    chain = chainsOf(state, playerId)
+      .map((candidate) => ({ candidate, size: members(candidate).filter((u) => workable(state, u)).length }))
+      .reduce<{ candidate: string[]; size: number } | undefined>((best, o) => (o.size > (best?.size ?? 0) ? o : best), undefined)
+      ?.candidate;
   }
 
   let current = state;
   const events: GameEvent[] = [];
-  for (const id of chain ?? []) {
-    const colony = current.units.find((u) => u.id === id);
-    if (!colony || !canHarvest(current, colony)) continue;
-    const collected = collect(current, colony, rng);
+  for (const u of members(chain ?? [])) {
+    const fresh = current.units.find((x) => x.id === u.id);
+    if (!fresh || !canHarvest(current, fresh)) continue;
+    const collected = collect(current, fresh, rng);
     current = collected.state;
     events.push(collected.event);
   }

@@ -22,6 +22,9 @@ export type GameSettings = { mapSize: number; mapStyle: MapStyle };
 /** Сколько единиц ресурса приносит одна добыча (случайно, включая границы). */
 export const HARVEST_MIN = 1;
 export const HARVEST_MAX = 3;
+/** Кубик добычи: колонии при гильдии на таком же ресурсе и флота. */
+export const GUILD_HARVEST_DIE = 6;
+export const FLEET_HARVEST_DIE = 6;
 /** Боевые классы юнитов для таблицы целевых чисел. */
 export type CombatClass = 'phalanx' | 'archer' | 'cavalry' | 'scout' | 'catapult';
 
@@ -124,6 +127,23 @@ export const UNIT_KINDS = {
     vision: 1, mobile: false, fast: false, harvests: true, colony: true, building: true, terrain: 'land',
     supply: { food: 1 }, combat: null, burn: 6, walls: true, tower: true,
   },
+  // Особые здания: стоят в одной локации с колонией (не больше одного на локацию).
+  fleet: {
+    vision: 1, mobile: false, fast: false, harvests: true, colony: false, building: true, terrain: 'land',
+    supply: { wood: 1, copper: 1 }, combat: null, burn: null, walls: false, tower: false,
+  },
+  guild: {
+    vision: 1, mobile: false, fast: false, harvests: false, colony: false, building: true, terrain: 'land',
+    supply: { wood: 1, copper: 1 }, combat: null, burn: null, walls: false, tower: false,
+  },
+  market: {
+    vision: 1, mobile: false, fast: false, harvests: false, colony: false, building: true, terrain: 'land',
+    supply: { wood: 1, copper: 1 }, combat: null, burn: null, walls: false, tower: false,
+  },
+  barracks: {
+    vision: 1, mobile: false, fast: false, harvests: false, colony: false, building: true, terrain: 'land',
+    supply: {}, combat: null, burn: null, walls: false, tower: false,
+  },
 } as const satisfies Record<string, UnitKindInfo>;
 export type UnitKind = keyof typeof UNIT_KINDS;
 
@@ -132,13 +152,26 @@ export const STARTING_KINDS: readonly UnitKind[] = ['unit', 'rider'];
 
 
 /** Что можно построить на фазе строительства и во сколько это обходится. */
-export const BUILDING_TYPES = ['colony', 'fortified_colony', 'road'] as const;
+export const BUILDING_TYPES = ['colony', 'fortified_colony', 'road', 'fleet', 'guild', 'market', 'barracks'] as const;
 export type BuildingType = (typeof BUILDING_TYPES)[number];
 export const BUILDINGS: Record<BuildingType, { cost: Partial<Stock> }> = {
   colony: { cost: { wood: 1, marble: 1 } },
   fortified_colony: { cost: { wood: 1, marble: 3 } },
   road: { cost: { marble: 1 } },
+  fleet: { cost: { wood: 3, copper: 2, marble: 1 } },
+  guild: { cost: { marble: 3, copper: 2, wood: 1 } },
+  market: { cost: { marble: 3, copper: 2, wood: 1 } },
+  barracks: { cost: { copper: 2, wood: 2, marble: 2 } },
 };
+
+/**
+ * Особые здания: строятся в локации, где уже стоит ваша колония; не больше одного на локацию.
+ * Флот — только на побережье, производит d6 пищи; гильдия поднимает добычу колоний на таком же ресурсе с d3 до d6;
+ * рыночная площадь снижает цены купцов с d6 до d3; казармы позволяют строить юнитов в этой локации.
+ */
+export const SPECIAL_BUILDINGS = ['fleet', 'guild', 'market', 'barracks'] as const satisfies readonly UnitKind[];
+export type SpecialBuilding = (typeof SPECIAL_BUILDINGS)[number];
+export const isSpecialBuilding = (kind: string): kind is SpecialBuilding => (SPECIAL_BUILDINGS as readonly string[]).includes(kind);
 
 /** Фазы хода. Бой идёт сразу после манёвра и начинается, когда все игроки подтвердили (если спорных локаций нет, фаза пропускается). */
 export const PHASES = ['maneuver', 'battle', 'supply', 'build', 'harvest', 'trade'] as const;
