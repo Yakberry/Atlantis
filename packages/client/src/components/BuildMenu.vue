@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { RESOURCES, type BuildingType, type Stock } from '@atlantis/shared';
+import { RESOURCES, type BuildingType, type UnitKind, type Stock, type Resource, UNIT_KINDS } from '@atlantis/shared';
 import { RESOURCE_COLORS, RESOURCE_LABELS } from '../board/palette';
 import { spriteUrl } from '../board/sprites';
 
@@ -30,7 +30,9 @@ const INFO: Record<BuildingType, { name: string; hint: string; glyph?: string }>
   barracks: { name: 'Казармы', hint: 'Позволяют строить юнитов в этой локации. Снабжения не требуют.' },
 };
 
+// const art = (type: UnitKind) => spriteUrl(`units/${type}`);
 const art = (type: BuildingType) => spriteUrl(`buildings/${type}`);
+const resourceIcon = (resource: Resource) => spriteUrl(`resources/${resource}`);
 const costOf = (cost: Stock) => RESOURCES.filter((resource) => cost[resource] > 0).map((resource) => ({ resource, amount: cost[resource] }));
 </script>
 
@@ -61,8 +63,10 @@ const costOf = (cost: Stock) => RESOURCES.filter((resource) => cost[resource] > 
               :key="item.resource"
               class="chip"
               :title="RESOURCE_LABELS[item.resource]"
-              :style="{ '--resource': RESOURCE_COLORS[item.resource] }"
-            >{{ item.amount }}</span>
+            >
+              <img class="card-cost-art" v-if="resourceIcon(item.resource)" :src="resourceIcon(item.resource)" alt="" />
+              {{ item.amount }}
+            </span>
           </span>
         </button>
       </li>

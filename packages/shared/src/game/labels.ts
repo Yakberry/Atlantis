@@ -1,7 +1,7 @@
 import type { Resource, UnitKind } from './model';
 
 export const RESOURCE_LABELS: Record<Resource, string> = {
-  food: 'Продовольствие',
+  food: 'Пища',
   wood: 'Лес',
   marble: 'Мрамор',
   copper: 'Медь',

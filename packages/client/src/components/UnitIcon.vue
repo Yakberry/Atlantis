@@ -1,13 +1,16 @@
 <script setup>
-import { computed, getCurrentInstance } from 'vue'
+import {computed, getCurrentInstance} from 'vue'
 
 const props = defineProps({
-  src:   { type: String, required: true }, // data:image/svg+xml,...
-  color: { type: String, default: '#808080' },
-  stroke: { type: String, default: '#808080' },
+  src: {type: String, required: true},
+  color: {type: String, default: '#808080'},  // player-fill
+  stroke: {type: String, default: '#080a0d'},  // ink-outline
+  strokeWidth: {type: [Number, String], default: 7},
+  selected: {type: Boolean, default: false},
+  selectedStroke: {type: String, default: '#ffffff'},
+  selectedStrokeWidth: {type: [Number, String], default: 9},
 })
 
-// Vue 3.5+: const uid = useId()
 const uid = getCurrentInstance().uid
 
 function decodeDataUri(uri) {
@@ -28,13 +31,17 @@ function decodeDataUri(uri) {
 
 const html = computed(() => {
   const text = decodeDataUri(props.src)
-  const doc  = new DOMParser().parseFromString(text, 'image/svg+xml')
-  const svg  = doc.documentElement
+  const doc = new DOMParser().parseFromString(text, 'image/svg+xml')
+  const svg = doc.documentElement
 
   // 1) Базовая заливка → currentColor (её и задаёт :style="{ color }")
   svg.querySelectorAll('.player-fill').forEach(el => {
     el.setAttribute('fill', 'currentColor')
-    // el.setAttribute('stroke', 'black')
+  })
+
+  svg.querySelectorAll('.ink-outline').forEach(el => {
+    el.removeAttribute('stroke')
+    el.removeAttribute('stroke-width')
   })
 
   // 2) Уникальные id — иначе у всех юнитов на карте один и тот же filter id
@@ -58,7 +65,18 @@ const html = computed(() => {
 </script>
 
 <template>
-  <div class="unit-icon" :style="{ color }" v-html="html" />
+  <div
+      class="unit-icon"
+      :class="{ 'is-selected': selected }"
+      :style="{
+      color,
+      '--unit-stroke': stroke,
+      '--unit-stroke-width': strokeWidth,
+      '--unit-stroke-selected': selectedStroke,
+      '--unit-stroke-width-selected': selectedStrokeWidth,
+    }"
+      v-html="html"
+  />
 </template>
 
 <style scoped>
@@ -72,5 +90,17 @@ const html = computed(() => {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+/* базовое состояние — перекрывает и presentation attribute, и удалённый inline */
+.unit-icon :deep(.ink-outline) {
+  stroke: var(--unit-stroke);
+  stroke-width: var(--unit-stroke-width);
+}
+
+/* выбранный юнит */
+.unit-icon.is-selected :deep(.ink-outline) {
+  stroke: var(--unit-stroke-selected);
+  stroke-width: var(--unit-stroke-width-selected);
 }
 </style>

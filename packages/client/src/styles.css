@@ -174,7 +174,7 @@ button.secondary { background: transparent; border-color: var(--line); color: va
 .resource.short .need { color: var(--danger); font-weight: 600; }
 .chips { display: inline-flex; gap: 0.5rem; margin-left: 0.5rem; vertical-align: middle; }
 .chip { display: inline-flex; align-items: center; gap: 0.2rem; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
-.chip::before { content: ''; width: 0.6rem; height: 0.6rem; border-radius: 2px; background: var(--resource); }
+/*.chip::before { content: ''; width: 0.6rem; height: 0.6rem; border-radius: 2px; background: var(--resource); }*/
 
 /* ---------- Снабжение и захват ---------- */
 .unit.droppable { cursor: pointer; }
@@ -220,6 +220,7 @@ button.secondary { background: transparent; border-color: var(--line); color: va
 .card-art { display: grid; place-items: center; width: 2.5rem; height: 2.5rem; font-size: 1.6rem; line-height: 1; }
 .card-art img { width: 100%; height: 100%; }
 .card-cost { display: flex; gap: 0.5rem; }
+.card-cost-art { width: 25px; height: 25px; }
 
 /* ---------- Столкновение: юнит до конца хода не ходит ---------- */
 .unit.blocked .shape { stroke: var(--danger); stroke-width: 4; }

@@ -444,7 +444,11 @@ function onTileClick(tile: Tile) {
           <circle v-if="(unit.selectable || unit.harvestable) && !unit.selected" r="17" class="halo" />
           <template v-if="unit.sprite">
             <foreignObject x="-13" y="-13" width="26" height="26">
-              <UnitIcon :src="unit.sprite" :color="playerColor(unit.slot) :border-color" />
+              <UnitIcon
+                  :src="unit.sprite"
+                  :color="playerColor(unit.slot)"
+                  :selected="unit.selected"
+              />
             </foreignObject>
           </template>
           <polygon v-else-if="unit.kind === 'fortified_colony'" :points="FORT_POINTS" :fill="unit.color" class="shape fort" />
