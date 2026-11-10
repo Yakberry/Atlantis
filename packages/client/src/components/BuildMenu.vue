@@ -1,17 +1,17 @@
 <script setup lang="ts">
-import { RESOURCES, type BuildingType, type Stock, type Resource } from '@atlantis/shared';
+import { RESOURCES, type BuildingType, type UnitKind, type Stock, type Resource } from '@atlantis/shared';
 import { computed } from 'vue';
 import { RESOURCE_COLORS, RESOURCE_LABELS } from '../board/palette';
 import { spriteUrl } from '../board/sprites';
 
-export type BuildCard = { type: BuildingType; cost: Stock; disabled: boolean; reason: string };
+export type BuildCard = { type: UnitKind; cost: Stock; disabled: boolean; reason: string };
 
 const props = defineProps<{ title: string; cards: BuildCard[]; roadMode: boolean }>();
-const emit = defineEmits<{ pick: [type: BuildingType]; close: [] }>();
+const emit = defineEmits<{ pick: [type: UnitKind]; close: [] }>();
 
-const HIRES: readonly BuildingType[] = ['unit', 'archer', 'rider', 'catapult', 'scout'];
+const HIRES: readonly UnitKind[] = ['unit', 'archer', 'rider', 'catapult', 'scout'];
 
-const INFO: Record<BuildingType, { name: string; hint: string; glyph?: string }> = {
+const INFO: Record<UnitKind, { name: string; hint: string; glyph?: string }> = {
   colony: {
     name: 'Колония',
     hint: 'Добывает 1–3 ресурса своей локации. Снабжение: 1 еда. Не больше одной на локацию. Если в ней не осталось защитников, её жгут: чужому юниту нужно выбросить 5.',
@@ -36,10 +36,10 @@ const INFO: Record<BuildingType, { name: string; hint: string; glyph?: string }>
   market: { name: 'Рыночная площадь', hint: 'Снижает цены купцов с d6 до d3. Снабжение: 1 лес и 1 медь.' },
   barracks: { name: 'Казармы', hint: 'Позволяют нанимать здесь фалангу, стрелков, кавалерию и катапульту. Снабжения не требуют.' },
   unit: { name: 'Фаланга', hint: 'Нанимается в казармах. Снабжение: 1 еда и 1 медь.' },
-  archer: { name: 'Стрелки', hint: 'Нанимаются в казармах. Снабжение: 1 еда и 1 медь.' },
+  archer: { name: 'Лучник', hint: 'Нанимаются в казармах. Снабжение: 1 еда и 1 медь.' },
   rider: { name: 'Кавалерия', hint: 'Нанимается в казармах. Ходит на этапе «кавалерия». Снабжение: 1 еда и 1 медь.' },
   catapult: { name: 'Катапульта', hint: 'Нанимается в казармах. Отключает стены, особые здания поджигает без броска. Снабжение: 1 еда и 1 медь.' },
-  scout: { name: 'Разведчики', hint: 'Производит любая ваша колония. Поджигать колонии и здания не умеют. Снабжение: 1 еда и 1 медь.' },
+  scout: { name: 'Разведчик', hint: 'Производит любая ваша колония. Поджигать колонии и здания не умеют. Снабжение: 1 еда и 1 медь.' },
 };
 
 const groups = computed(() => [
@@ -47,7 +47,7 @@ const groups = computed(() => [
   { title: 'Найм юнитов', cards: props.cards.filter((card) => HIRES.includes(card.type)) },
 ]);
 
-const art = (type: BuildingType) => spriteUrl(`buildings/${type}`);
+const art = (type: UnitKind) => spriteUrl(`units/${type}`);
 const resourceIcon = (resource: Resource) => spriteUrl(`resources/${resource}`);
 const costOf = (cost: Stock) => RESOURCES.filter((resource) => cost[resource] > 0).map((resource) => ({ resource, amount: cost[resource] }));
 </script>

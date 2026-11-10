@@ -97,7 +97,6 @@ type UnitKindInfo = {
  * видят вокруг себя, участвуют в споре за локацию); различаются свойствами из этой таблицы.
  */
 export const UNIT_KINDS = {
-  // Фаланга (боевой класс phalanx) и кавалерия — те самые «юнит» и «всадник».
   unit: {
     vision: 2, mobile: true, fast: false, harvests: false, colony: false, building: false, terrain: 'land',
     supply: { food: 1, copper: 1 }, combat: 'phalanx', burn: null, walls: false, tower: false,
@@ -113,7 +112,7 @@ export const UNIT_KINDS = {
   },
   scout: {
     vision: 2, mobile: true, fast: false, harvests: false, colony: false, building: false, terrain: 'land',
-    supply: { food: 1, copper: 1 }, combat: 'scout', burn: null, walls: false, tower: false,
+    supply: { food: 1 }, combat: 'scout', burn: null, walls: false, tower: false,
   },
   catapult: {
     vision: 2, mobile: true, fast: false, harvests: false, colony: false, building: false, terrain: 'land',
@@ -162,12 +161,11 @@ export const BUILDINGS: Record<BuildingType, { cost: Partial<Stock> }> = {
   guild: { cost: { marble: 3, copper: 2, wood: 1 } },
   market: { cost: { marble: 3, copper: 2, wood: 1 } },
   barracks: { cost: { copper: 2, wood: 2, marble: 2 } },
-  // Найм юнитов. Стоимость временная (в описании не задана): меняется здесь.
-  unit: { cost: { food: 1, copper: 1 } },
-  archer: { cost: { wood: 1, copper: 1 } },
-  rider: { cost: { food: 1, copper: 2 } },
+  unit: { cost: { food: 1, copper: 2 } },
+  archer: { cost: { food: 1, wood: 2 } },
+  rider: { cost: { food: 3, copper: 1 } },
   catapult: { cost: { wood: 2, copper: 2 } },
-  scout: { cost: { food: 1, wood: 1 } },
+  scout: { cost: { food: 1, copper: 1 } },
 };
 
 /** Войска нанимаются на фазе строительства: фаланга, стрелки, кавалерия и катапульта — в локации с вашими казармами, разведчик — в любой вашей колонии. */

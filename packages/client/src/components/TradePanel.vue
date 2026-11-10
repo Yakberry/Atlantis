@@ -9,7 +9,9 @@ const props = defineProps<{ trade: NonNullable<GameView['trade']>; stock: Stock 
 const emit = defineEmits<{ accept: [give: Stock, get: Resource] }>();
 
 const give = ref<Stock>(emptyStock());
-const wanted = ref<Resource | ''>('');
+const wanted = ref<Resource | ''>((Object.keys(props.stock) as Resource[])
+    .reduce((a, b) => props.stock[b] < props.stock[a] ? b : a)
+);
 
 const given = computed(() => RESOURCES.reduce((sum, resource) => sum + give.value[resource], 0));
 const valid = computed(() => props.trade.price !== null && given.value === props.trade.price && wanted.value !== '');
@@ -19,16 +21,22 @@ watch(
   () => props.trade.accepted.length,
   () => {
     give.value = emptyStock();
-    wanted.value = '';
   },
 );
 
 const icon = (resource: Resource) => spriteUrl(`resources/${resource}`);
 const canAdd = (resource: Resource) =>
   props.trade.price !== null && given.value < props.trade.price && give.value[resource] < props.stock[resource];
-const add = (resource: Resource, delta: 1 | -1) => {
+const add = (resource: Resource, delta: 1 | -1, max?: boolean) => {
   if (delta > 0 ? canAdd(resource) : give.value[resource] > 0) {
-    give.value = { ...give.value, [resource]: give.value[resource] + delta };
+    const finalDelta = max
+        ? delta > 0
+            ? props.trade.price && props.trade.price - given.value < props.stock[resource]
+                ? props.trade.price - given.value
+                : props.stock[resource]
+            : delta * give.value[resource]
+        : delta;
+    give.value = { ...give.value, [resource]: give.value[resource] + finalDelta };
   }
 };
 const accept = () => {
@@ -61,9 +69,11 @@ const accept = () => {
             </span>
             <span class="trade-name">{{ RESOURCE_LABELS[resource] }}</span>
             <span class="muted">({{ stock[resource] }})</span>
+            <button class="secondary step" type="button" :disabled="give[resource] === 0" :aria-label="`Минимум: ${RESOURCE_LABELS[resource]}`" @click="add(resource, -1, true)">-−</button>
             <button class="secondary step" type="button" :disabled="give[resource] === 0" :aria-label="`Меньше: ${RESOURCE_LABELS[resource]}`" @click="add(resource, -1)">−</button>
             <strong class="trade-count">{{ give[resource] }}</strong>
             <button class="secondary step" type="button" :disabled="!canAdd(resource)" :aria-label="`Больше: ${RESOURCE_LABELS[resource]}`" @click="add(resource, 1)">+</button>
+            <button class="secondary step" type="button" :disabled="!canAdd(resource)" :aria-label="`Максимум: ${RESOURCE_LABELS[resource]}`" @click="add(resource, 1, true)">++</button>
           </li>
         </ul>
       </div>

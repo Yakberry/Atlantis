@@ -11,8 +11,8 @@ export const RESOURCE_LABELS: Record<Resource, string> = {
 export const UNIT_LABELS: Record<UnitKind, string> = {
   unit: 'Фаланга',
   rider: 'Кавалерия',
-  archer: 'Стрелки',
-  scout: 'Разведчики',
+  archer: 'Лучник',
+  scout: 'Разведчик',
   catapult: 'Катапульта',
   fleet: 'Флот',
   guild: 'Гильдия',
