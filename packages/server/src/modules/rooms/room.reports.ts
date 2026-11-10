@@ -49,8 +49,8 @@ export function formatReport(data: ReportData, room: RoomState): string {
     }
     case 'burn': {
       const target = `${UNIT_LABELS[data.kind].toLowerCase()} игрока ${nameOf(room, data.ownerId)}`;
-      const head = `Поджог: ${target} в ${place(room, data.hex)}, броски ${data.rolls.join(', ')} (нужно ${data.difficulty})`;
-      return data.burned ? `${head} — сожжена.` : `${head} — устояла.`;
+      const how = data.automatic ? 'катапульта поджигает без броска' : `броски ${data.rolls.join(', ')} (нужно ${data.difficulty})`;
+      return `Поджог: ${target} в ${place(room, data.hex)}, ${how}: ${data.burned ? 'уничтожено' : 'уцелело'}.`;
     }
     case 'unsupplied':
       return `Без снабжения остались и удалены: юнитов — ${data.units}, построек — ${data.buildings}.`;

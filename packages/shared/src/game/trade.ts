@@ -1,4 +1,5 @@
-import { DIE_SIDES, emptyStock, RESOURCES, TRADE_OFFERS, type Applied, type GameState, type Resource, type Result, type Stock } from './model';
+import { DIE_SIDES, emptyStock, isCaptured, RESOURCES, TRADE_OFFERS, type Applied, type GameState, type Resource, type Result, type Stock } from './model';
+import { sameCell } from './hex';
 import type { Rng } from './random';
 import { fail, ok } from './result';
 import { pay } from './supply';
@@ -17,7 +18,10 @@ export const currentPrice = (state: GameState, playerId: string): number | undef
 
 /** Рыночная площадь снижает цены с d6 до d3: брошенное значение делится пополам с округлением вверх. */
 export const effectivePrice = (state: GameState, playerId: string, rolled: number): number =>
-  state.units.some((unit) => unit.ownerId === playerId && unit.kind === 'market') ? Math.ceil(rolled / 2) : rolled;
+  state.units.some(
+    (unit) =>
+      unit.ownerId === playerId && unit.kind === 'market' && !isCaptured(playerId, state.units.filter((other) => sameCell(other, unit))),
+  ) ? Math.ceil(rolled / 2) : rolled;
 
 /** Торговля для игрока ещё возможна: предложение есть, и ему хватает ресурсов, чтобы его принять. */
 export function canTrade(state: GameState, playerId: string): boolean {

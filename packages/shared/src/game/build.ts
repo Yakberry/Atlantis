@@ -2,6 +2,7 @@ import { neighbors, sameCell, distance, type Coord } from './hex';
 import {
   BUILDINGS,
   emptyStock,
+  HIRED_UNITS,
   isSpecialBuilding,
   SPECIAL_BUILDINGS,
   UNIT_KINDS,
@@ -65,6 +66,13 @@ export function canBuildAnything(state: GameState, playerId: string): boolean {
   const stock = state.stock[playerId] ?? emptyStock();
   const affordable = (building: BuildingType) => covers(stock, fullCost(building));
   const sites = buildSites(state, playerId);
+  const canHire = (building: BuildingType) =>
+    affordable(building) &&
+    sites.some((cell) =>
+      entitiesAt(state, cell).some((u) =>
+        building === 'scout' ? UNIT_KINDS[u.kind].colony && u.ownerId === playerId : u.kind === 'barracks' && u.ownerId === playerId,
+      ),
+    );
   const canSpecial = (building: BuildingType) =>
     affordable(building) &&
     sites.some((cell) => {
@@ -81,7 +89,8 @@ export function canBuildAnything(state: GameState, playerId: string): boolean {
     (affordable('fortified_colony') &&
       sites.some((cell) => entitiesAt(state, cell).some((u) => u.kind === 'colony' && u.ownerId === playerId))) ||
     (affordable('road') && sites.some((cell) => roadTargets(state, playerId, cell).length > 0)) ||
-    SPECIAL_BUILDINGS.some(canSpecial)
+    SPECIAL_BUILDINGS.some(canSpecial) ||
+    HIRED_UNITS.some(canHire)
   );
 }
 
@@ -138,6 +147,19 @@ export function build(state: GameState, playerId: string, action: BuildAction): 
       if (here.some((u) => isSpecialBuilding(u.kind))) return fail('В этой локации уже есть особое здание');
       if (building === 'fleet' && !isCoastal(state, at)) return fail('Флот строится только на прибрежной локации');
       return ok({ ...next, units: [...state.units, spawn(state, building, playerId, at)] });
+
+    case 'unit':
+    case 'archer':
+    case 'rider':
+    case 'catapult':
+      if (!here.some((u) => u.ownerId === playerId && u.kind === 'barracks')) return fail('Войска нанимаются в локации с вашими казармами');
+      return ok({ ...next, units: [...state.units, spawn(state, building, playerId, at)] });
+
+    case 'scout':
+      if (!here.some((u) => u.ownerId === playerId && UNIT_KINDS[u.kind].colony)) {
+        return fail('Разведчика производит колония: нужна ваша колония в этой локации');
+      }
+      return ok({ ...next, units: [...state.units, spawn(state, 'scout', playerId, at)] });
 
     case 'road': {
       const { to } = action;

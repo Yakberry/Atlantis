@@ -61,7 +61,7 @@ export function canHarvest(state: GameState, unit: Unit): boolean {
 function harvestDie(state: GameState, unit: Unit, resource: Resource): number {
   if (!UNIT_KINDS[unit.kind].colony) return FLEET_HARVEST_DIE;
   const boosted = state.units.some(
-    (u) => u.ownerId === unit.ownerId && u.kind === 'guild' && hexOf(state, u)?.type === resource,
+    (u) => u.ownerId === unit.ownerId && u.kind === 'guild' && hexOf(state, u)?.type === resource && !isCapturedNow(state, u),
   );
   return boosted ? GUILD_HARVEST_DIE : HARVEST_MAX;
 }

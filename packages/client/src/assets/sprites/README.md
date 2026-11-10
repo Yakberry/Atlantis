@@ -43,3 +43,8 @@
 `units/fleet.svg`, `units/guild.svg`, `units/market.svg`, `units/barracks.svg` — иконки на карте (одноцветные, красятся в цвет игрока, как колонии).
 `buildings/fleet.svg`, `buildings/guild.svg`, `buildings/market.svg`, `buildings/barracks.svg` — карточки в меню строительства.
 Пока файл пустой, здание на карте и картинка карточки не показываются вовсе: запасных фигур для этих зданий нет.
+
+## Найм юнитов
+
+Карточки найма в меню строительства: `buildings/unit.svg` (фаланга), `buildings/archer.svg`, `buildings/rider.svg` (кавалерия), `buildings/catapult.svg`,
+`buildings/scout.svg`. Запасных значков у них нет: пока файл пустой, картинка карточки не показывается. Иконки самих юнитов на карте — `units/*.svg`.

@@ -3,6 +3,7 @@ import {
   ATTACK_DEFAULT,
   ATTACK_TARGETS,
   DIE_SIDES,
+  isSpecialBuilding,
   TOWER_TARGET,
   UNIT_KINDS,
   WALL_CHECK,
@@ -16,6 +17,8 @@ import { canSee } from './visibility';
 
 const d6 = (rng: Rng) => 1 + Math.floor(rng() * DIE_SIDES);
 const isBuilding = (unit: Unit) => UNIT_KINDS[unit.kind].building;
+/** Разведчики — юниты, но поджигать колонии и здания не умеют. */
+const canBurn = (kind: UnitKind) => UNIT_KINDS[kind].combat !== null && UNIT_KINDS[kind].combat !== 'scout';
 
 /** Целевое число атаки: сколько нужно выбросить на d6 (не меньше), чтобы `attacker` поразил `defender`. */
 export function attackTarget(attacker: UnitKind, defender: UnitKind): number {
@@ -117,20 +120,27 @@ export function resolveBattles(state: GameState, rng: Rng): { state: GameState; 
     }
     for (const id of dead) destroyed.add(id);
 
-    // 3. Поджог незащищённых колоний.
+    // 3. Поджог. Колония горит, если у владельца нет защитников; особое здание — если нет ни защитников, ни колонии
+    //    (колонию в этот же бой жгут первой). Разведчики не поджигают. Особое здание катапульта поджигает без броска.
     const survivors = soldiers.filter((unit) => !dead.has(unit.id));
-    for (const colony of buildings) {
-      const difficulty = UNIT_KINDS[colony.kind].burn;
-      const attackers = survivors.filter((unit) => unit.ownerId !== colony.ownerId);
-      const defended = survivors.some((unit) => unit.ownerId === colony.ownerId);
-      if (difficulty === null || defended || attackers.length === 0) continue;
+    const targets = [...buildings].sort((x, y) => Number(UNIT_KINDS[y.kind].colony) - Number(UNIT_KINDS[x.kind].colony));
+    for (const target of targets) {
+      const difficulty = UNIT_KINDS[target.kind].burn;
+      const attackers = survivors.filter((unit) => unit.ownerId !== target.ownerId && canBurn(unit.kind));
+      const defended = survivors.some((unit) => unit.ownerId === target.ownerId);
+      const special = isSpecialBuilding(target.kind);
+      const hasColony = buildings.some(
+        (b) => b.ownerId === target.ownerId && UNIT_KINDS[b.kind].colony && !destroyed.has(b.id),
+      );
+      if (difficulty === null || defended || attackers.length === 0 || (special && hasColony)) continue;
 
-      const rolls = attackers.map(() => d6(rng));
-      const burned = rolls.some((roll) => roll >= difficulty);
-      if (burned) destroyed.add(colony.id);
+      const automatic = special && attackers.some((unit) => UNIT_KINDS[unit.kind].combat === 'catapult');
+      const rolls = automatic ? [] : attackers.map(() => d6(rng));
+      const burned = automatic || rolls.some((roll) => roll >= difficulty);
+      if (burned) destroyed.add(target.id);
       reports.push({
         audience,
-        data: { type: 'burn', hex: where, ownerId: colony.ownerId, kind: colony.kind, rolls, difficulty, burned },
+        data: { type: 'burn', hex: where, ownerId: target.ownerId, kind: target.kind, rolls, difficulty, burned, automatic },
       });
     }
   }

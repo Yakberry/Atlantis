@@ -50,7 +50,7 @@ export const DIE_SIDES = 6;
 /** Сколько предложений у купцов за ход (потолок числа сделок игрока). */
 export const TRADE_OFFERS = 5;
 /** Заглушка условия победы: когда счётчик ходов доходит до этого значения, игра заканчивается. */
-export const WIN_TURN = 10;
+export const WIN_TURN = 20;
 
 export const RESOURCES = ['food', 'wood', 'marble', 'copper'] as const;
 export type Resource = (typeof RESOURCES)[number];
@@ -84,7 +84,7 @@ type UnitKindInfo = {
   supply: Partial<Stock>;
   /** Класс в таблице целевых чисел боя; у построек его нет. */
   combat: CombatClass | null;
-  /** Сложность поджога постройки (нужно выбросить на d6 не меньше); у не-построек `null`. */
+  /** Сложность поджога постройки (нужно выбросить на d6 не меньше); у юнитов `null`. Особое здание поджигают, когда у владельца в локации нет ни колонии, ни войск (катапульта — автоматически). */
   burn: number | null;
   /** «Стены»: нападающие сначала проходят проверку (`WALL_CHECK`) или не участвуют в бою. Не работают против катапульты. */
   walls: boolean;
@@ -130,19 +130,19 @@ export const UNIT_KINDS = {
   // Особые здания: стоят в одной локации с колонией (не больше одного на локацию).
   fleet: {
     vision: 1, mobile: false, fast: false, harvests: true, colony: false, building: true, terrain: 'land',
-    supply: { wood: 1, copper: 1 }, combat: null, burn: null, walls: false, tower: false,
+    supply: { wood: 1, copper: 1 }, combat: null, burn: 5, walls: false, tower: false,
   },
   guild: {
     vision: 1, mobile: false, fast: false, harvests: false, colony: false, building: true, terrain: 'land',
-    supply: { wood: 1, copper: 1 }, combat: null, burn: null, walls: false, tower: false,
+    supply: { wood: 1, copper: 1 }, combat: null, burn: 5, walls: false, tower: false,
   },
   market: {
     vision: 1, mobile: false, fast: false, harvests: false, colony: false, building: true, terrain: 'land',
-    supply: { wood: 1, copper: 1 }, combat: null, burn: null, walls: false, tower: false,
+    supply: { wood: 1, copper: 1 }, combat: null, burn: 5, walls: false, tower: false,
   },
   barracks: {
     vision: 1, mobile: false, fast: false, harvests: false, colony: false, building: true, terrain: 'land',
-    supply: {}, combat: null, burn: null, walls: false, tower: false,
+    supply: {}, combat: null, burn: 5, walls: false, tower: false,
   },
 } as const satisfies Record<string, UnitKindInfo>;
 export type UnitKind = keyof typeof UNIT_KINDS;
@@ -152,7 +152,7 @@ export const STARTING_KINDS: readonly UnitKind[] = ['unit', 'rider'];
 
 
 /** Что можно построить на фазе строительства и во сколько это обходится. */
-export const BUILDING_TYPES = ['colony', 'fortified_colony', 'road', 'fleet', 'guild', 'market', 'barracks'] as const;
+export const BUILDING_TYPES = ['colony', 'fortified_colony', 'road', 'fleet', 'guild', 'market', 'barracks', 'unit', 'archer', 'rider', 'catapult', 'scout'] as const;
 export type BuildingType = (typeof BUILDING_TYPES)[number];
 export const BUILDINGS: Record<BuildingType, { cost: Partial<Stock> }> = {
   colony: { cost: { wood: 1, marble: 1 } },
@@ -162,7 +162,17 @@ export const BUILDINGS: Record<BuildingType, { cost: Partial<Stock> }> = {
   guild: { cost: { marble: 3, copper: 2, wood: 1 } },
   market: { cost: { marble: 3, copper: 2, wood: 1 } },
   barracks: { cost: { copper: 2, wood: 2, marble: 2 } },
+  // Найм юнитов. Стоимость временная (в описании не задана): меняется здесь.
+  unit: { cost: { food: 1, copper: 1 } },
+  archer: { cost: { wood: 1, copper: 1 } },
+  rider: { cost: { food: 1, copper: 2 } },
+  catapult: { cost: { wood: 2, copper: 2 } },
+  scout: { cost: { food: 1, wood: 1 } },
 };
+
+/** Войска нанимаются на фазе строительства: фаланга, стрелки, кавалерия и катапульта — в локации с вашими казармами, разведчик — в любой вашей колонии. */
+export const BARRACKS_UNITS = ['unit', 'archer', 'rider', 'catapult'] as const satisfies readonly UnitKind[];
+export const HIRED_UNITS = [...BARRACKS_UNITS, 'scout'] as const satisfies readonly UnitKind[];
 
 /**
  * Особые здания: строятся в локации, где уже стоит ваша колония; не больше одного на локацию.
@@ -325,7 +335,7 @@ export type ReportData =
   /** Лог боевых потерь: у каждой стороны — список потерянных юнитов; `stopped` — сколько юнитов не прошли стены. */
   | { type: 'battle'; hex: Coord; losses: Record<string, UnitKind[]>; stopped: Record<string, number>; tower: boolean }
   /** Попытка сжечь незащищённую колонию. */
-  | { type: 'burn'; hex: Coord; ownerId: string; kind: UnitKind; rolls: number[]; difficulty: number; burned: boolean }
+  | { type: 'burn'; hex: Coord; ownerId: string; kind: UnitKind; rolls: number[]; difficulty: number; burned: boolean; automatic: boolean }
   | { type: 'unsupplied'; playerId: string; units: number; buildings: number }
   | { type: 'supply'; playerId: string; spent: Stock; left: Stock };
 

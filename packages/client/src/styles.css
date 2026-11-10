@@ -266,3 +266,7 @@ button.secondary { background: transparent; border-color: var(--line); color: va
 .trade-name { flex: 1; }
 .trade-count { min-width: 1.5ch; text-align: center; font-variant-numeric: tabular-nums; }
 .trade .step { padding: 0.1rem 0.6rem; }
+
+.build-menu { max-height: calc(100% - 1.5rem); overflow-y: auto; }
+.build-menu section + section { margin-top: 0.4rem; }
+.build-menu h3 { margin: 0.25rem 0; font-size: 0.8rem; font-weight: 600; }

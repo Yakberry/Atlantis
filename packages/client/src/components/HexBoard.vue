@@ -192,6 +192,13 @@ const buildCards = computed<BuildCard[]>(() => {
       reason = 'В этой локации уже есть особое здание';
     } else if (type === 'fleet' && !props.game.hexes.some((h) => h.visible && h.terrain === 'sea' && distance(h, hex) === 1)) {
       reason = 'Флот строится только на побережье';
+    } else if (
+      ['unit', 'archer', 'rider', 'catapult'].includes(type) &&
+      !hex.units.some((u) => u.kind === 'barracks' && u.ownerId === props.viewerId)
+    ) {
+      reason = 'Войска нанимаются в локации с вашими казармами';
+    } else if (type === 'scout' && !hex.units.some((u) => UNIT_KINDS[u.kind].colony && u.ownerId === props.viewerId)) {
+      reason = 'Разведчика производит колония: нужна ваша колония в этой локации';
     } else if (type === 'road' && roadTargets.value.length === 0) reason = 'Нет соседней локации, доступной для строительства, без дороги';
     return { type, cost, disabled: reason !== '', reason };
   });
@@ -227,7 +234,7 @@ function unitTitle(
     return unit.tired ? `${name} уже ходил на этом этапе` : name;
   }
   const name = UNIT_LABELS[unit.kind];
-  if (unit.captured) return `${name}: локация захвачена, добыча невозможна`;
+  if (unit.captured) return `${name}: в локации противник, здания не работают`;
   if (unit.chainLocked) return `${name} из другой цепочки: за фазу добывают с одной`;
   if (unit.tired) return `${name}: уже добыто в этом ходу`;
   return unit.harvestable ? 'Нажмите, чтобы добыть ресурс' : name;
@@ -289,7 +296,7 @@ function toTile(hex: HexView): Tile {
       const mine = unit.ownerId === props.viewerId;
       // «Готов»: свой и ещё не использовал своё действие в этой фазе.
       const idle = mine && canAct.value && !unit.tired;
-      const captured = info.harvests && isCaptured(unit.ownerId, hex.units);
+      const captured = (info.harvests || isSpecialBuilding(unit.kind)) && isCaptured(unit.ownerId, hex.units);
       const harvestPhase = idle && props.game.phase === 'harvest' && info.harvests && !captured;
       const chainLocked = harvestPhase && harvestedChain.value !== undefined && !harvestedChain.value.includes(anchorId(hex.units, unit) ?? '');
       const part = {
