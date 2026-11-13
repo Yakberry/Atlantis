@@ -1,4 +1,4 @@
-import { generateLand, surroundWithSea } from './board';
+import { generateLand, partitionSeas, surroundWithSea } from './board';
 import { build } from './build';
 import { sameCell } from './hex';
 import { harvestColony, harvestRemaining } from './harvest';
@@ -34,9 +34,11 @@ export function createGame(playerIds: string[], settings: GameSettings, rng: Rng
   // Уникальные названия суши в случайном порядке (море безымянное).
   const names = shuffle([...new Set(LOCATION_NAMES)], rng);
   if (names.length < land.length) throw new Error('В списке названий локаций меньше, чем клеток суши');
+  const water = surroundWithSea(land);
+  const seas = partitionSeas(land, water, rng); // океан делится на отдельные моря
   const board: Hex[] = [
-    ...land.map((cell, i) => ({ ...cell, type: pick(RESOURCES, rng), name: names[i] ?? null, discovered: false })),
-    ...surroundWithSea(land).map((cell) => ({ ...cell, type: 'sea' as const, name: null, discovered: false })),
+    ...land.map((cell, i) => ({ ...cell, type: pick(RESOURCES, rng), name: names[i] ?? null, sea: null, discovered: false })),
+    ...water.map((cell) => ({ ...cell, type: 'sea' as const, name: null, sea: seas.get(`${cell.q},${cell.r}`) ?? 0, discovered: false })),
   ];
 
   // У каждого игрока своя случайная стартовая локация (разные для всех): там колония и стартовые юниты.

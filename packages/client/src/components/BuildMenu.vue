@@ -6,7 +6,7 @@ import { spriteUrl } from '../board/sprites';
 
 export type BuildCard = { type: UnitKind; cost: Stock; disabled: boolean; reason: string };
 
-const props = defineProps<{ title: string; cards: BuildCard[]; roadMode: boolean }>();
+const props = defineProps<{ title: string; cards: BuildCard[]; mode: 'road' | 'fleet' | null; }>();
 const emit = defineEmits<{ pick: [type: UnitKind]; close: [] }>();
 
 const HIRES: readonly UnitKind[] = ['unit', 'archer', 'rider', 'catapult', 'scout'];
@@ -28,7 +28,7 @@ const INFO: Record<UnitKind, { name: string; hint: string; glyph?: string }> = {
     glyph: '═',
   },
   // Новые здания и юниты: только спрайт, без запасных значков.
-  fleet: { name: 'Флот', hint: 'Строится на побережье в локации с вашей колонией. Производит d6 пищи. Снабжение: 1 лес и 1 медь.' },
+  fleet: { name: 'Флот', hint: 'Строится на побережье в сторону выбранного моря. Производит d6 пищи, соединяет в цепочку все ваши прибрежные колонии этого моря, показывает все омываемые им локации и позволяет юнитам переходить между ними. Снабжение: 1 лес и 1 медь.' },
   guild: {
     name: 'Гильдия',
     hint: 'Улучшает добычу всех ваших колоний, добывающих тот же ресурс, что эта локация: с d3 до d6. Снабжение: 1 лес и 1 медь.',
@@ -58,7 +58,8 @@ const costOf = (cost: Stock) => RESOURCES.filter((resource) => cost[resource] > 
       <strong>{{ title }}</strong>
       <button class="secondary close" type="button" aria-label="Закрыть меню" @click="emit('close')">×</button>
     </header>
-    <p v-if="roadMode" class="muted">Выберите соседнюю подсвеченную локацию, к которой пойдёт дорога.</p>
+    <p v-if="mode === 'road'" class="muted">Выберите соседнюю подсвеченную локацию, к которой пойдёт дорога.</p>
+    <p v-else-if="mode === 'fleet'" class="muted">Выберите соседнюю клетку воды: флот будет направлен к её морю.</p>
     <section v-for="group in groups" :key="group.title">
       <h3 class="muted">{{ group.title }}</h3>
       <ul class="cards">

@@ -3,6 +3,7 @@ import { terrainOf, UNIT_KINDS, type Applied, type GameState, type Hex, type Res
 import type { Rng } from './random';
 import { fail, ok } from './result';
 import { roadBetween } from './roads';
+import { seaRoutes } from './seas';
 
 const key = ({ q, r }: Coord) => `${q},${r}`;
 
@@ -17,11 +18,13 @@ export function legalSteps(state: GameState, unit: Unit): Coord[] {
   if (!kind.mobile || unit.blocked) return [];
   if (state.stage === 'riders' && !kind.fast) return [];
 
-  return neighbors(unit).filter((cell) => {
+  const adjacent = neighbors(unit).filter((cell) => {
     const hex = state.hexes.find((h) => sameCell(h, cell));
     if (!hex || terrainOf(hex.type) !== kind.terrain) return false;
     return state.stage !== 'roads' || roadBetween(state.roads, unit, cell) !== undefined;
   });
+  // На этапе «дороги» флот даёт морские переходы между локациями своего моря.
+  return state.stage === 'roads' ? [...adjacent, ...seaRoutes(state, unit)] : adjacent;
 }
 
 /** Юнит ещё может пойти на этом этапе. */
@@ -39,8 +42,11 @@ export function moveUnit(state: GameState, playerId: string, unitId: string, to:
   const target = state.hexes.find((hex) => sameCell(hex, to));
   if (!target) return fail('Такой локации нет');
   if (kind.terrain !== terrainOf(target.type)) return fail('Сюда этот юнит пройти не может');
-  if (distance(unit, to) !== 1) return fail('Можно перейти только в соседнюю локацию');
-  if (state.stage === 'roads' && !roadBetween(state.roads, unit, to)) return fail('На этом этапе можно идти только по дороге');
+  const bySea = state.stage === 'roads' && seaRoutes(state, unit).some((cell) => sameCell(cell, to));
+  if (!bySea) {
+    if (distance(unit, to) !== 1) return fail('Можно перейти только в соседнюю локацию');
+    if (state.stage === 'roads' && !roadBetween(state.roads, unit, to)) return fail('На этом этапе можно идти только по дороге или морем (флот)');
+  }
 
   return ok({
     ...state,

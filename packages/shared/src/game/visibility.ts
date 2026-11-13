@@ -1,5 +1,6 @@
 import { distance, sameCell, type Coord } from './hex';
 import { buildSites } from './build';
+import { fleetSight, seaRoutes } from './seas';
 import { currentPrice, effectivePrice } from './trade';
 import { chainsOf } from './harvest';
 import { supplyNeeds } from './supply';
@@ -19,9 +20,8 @@ const toUnitView = (unit: Unit, viewerId: string): UnitView =>
 
 /** Игрок видит локацию: рядом с ней (в пределах обзора вида) стоит его юнит или постройка. */
 export const canSee = (state: GameState, viewerId: string, cell: Coord): boolean =>
-  state.units.some(
-    (unit) => unit.ownerId === viewerId && distance(unit, cell) <= UNIT_KINDS[unit.kind].vision,
-  );
+  state.units.some((unit) => unit.ownerId === viewerId && distance(unit, cell) <= UNIT_KINDS[unit.kind].vision) ||
+  fleetSight(state, viewerId).has(`${cell.q},${cell.r}`); // флот видит своё море и омываемые им локации
 
 /** Торговля глазами игрока: принятые им цены и текущее предложение; будущие цены он не видит. */
 function tradeView(state: GameState, viewerId: string): NonNullable<GameView['trade']> {
@@ -63,6 +63,15 @@ export function viewFor(state: GameState, viewerId: string): GameView {
     roads: shownRoads.filter((road) => canSee(state, viewerId, road.a) || canSee(state, viewerId, road.b)),
     chains: chainsOf(state, viewerId, shownRoads),
     trade: state.phase === 'trade' ? tradeView(state, viewerId) : null,
+    seaMoves:
+      state.phase === 'maneuver' && state.stage === 'roads'
+        ? Object.fromEntries(
+            eyes
+              .filter((unit) => UNIT_KINDS[unit.kind].mobile && !unit.tired && !unit.blocked)
+              .map((unit) => [unit.id, seaRoutes(state, unit)] as const)
+              .filter(([, routes]) => routes.length > 0),
+          )
+        : {},
     sites: state.phase === 'build' && !state.ready.includes(viewerId) ? buildSites(state, viewerId) : [],
     hexes: hexes.map((hex) => {
       const { q, r } = hex;
@@ -77,6 +86,7 @@ export function viewFor(state: GameState, viewerId: string): GameView {
         r,
         visible: true,
         name: hex.name,
+        sea: hex.sea,
         terrain: terrainOf(hex.type),
         resource: hex.type !== 'sea' && knowsResource(hex) ? hex.type : null,
         ownerId: owners.size === 1 ? ([...owners][0] ?? null) : null,

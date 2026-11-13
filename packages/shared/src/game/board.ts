@@ -1,6 +1,6 @@
 import { distance, neighbors, type Coord } from './hex';
 import { MAX_PLAYERS, type GameSettings } from './model';
-import { pickWeighted, shuffle, type Rng } from './random';
+import { pick, pickWeighted, shuffle, type Rng } from './random';
 
 const key = ({ q, r }: Coord) => `${q},${r}`;
 const ORIGIN: Coord = { q: 0, r: 0 };
@@ -211,4 +211,144 @@ export function surroundWithSea(land: Coord[]): Coord[] {
     }
   }
   return [...sea.values()];
+}
+
+/** Сколько клеток суши в среднем омывает одно море (хотим от 5 до 8). */
+const SEA_TARGET = 6.5;
+/** Больше стольких клеток суши одно море омывать не должно (по возможности). */
+const SEA_MAX = 9;
+
+/**
+ * Делит воду на отдельные моря: у каждой связной части воды берётся столько зёрен, чтобы море омывало примерно
+ * SEA_TARGET клеток суши (самые удалённые друг от друга клетки), моря растут от зёрен одновременно, затем границы
+ * сдвигаются так, чтобы число омываемых клеток суши выравнивалось. Возвращает номер моря для каждой клетки воды.
+ */
+export function partitionSeas(land: readonly Coord[], water: readonly Coord[], rng: Rng): Map<string, number> {
+  const landKeys = new Set(land.map(key));
+  const waterByKey = new Map(water.map((cell) => [key(cell), cell] as const));
+  const washed = (cells: Iterable<Coord>) => {
+    const out = new Set<string>();
+    for (const cell of cells) for (const next of neighbors(cell)) if (landKeys.has(key(next))) out.add(key(next));
+    return out;
+  };
+
+  const result = new Map<string, number>();
+  const seen = new Set<string>();
+  let nextId = 0;
+
+  for (const start of water) {
+    if (seen.has(key(start))) continue;
+    const component: Coord[] = [start];
+    seen.add(key(start));
+    for (let i = 0; i < component.length; i++) {
+      for (const next of neighbors(component[i]!)) {
+        const cell = waterByKey.get(key(next));
+        if (cell && !seen.has(key(cell))) {
+          seen.add(key(cell));
+          component.push(cell);
+        }
+      }
+    }
+
+    let count = Math.min(component.length, Math.max(1, Math.round(washed(component).size / SEA_TARGET)));
+    // Если какое-то море всё равно омывает слишком много суши, добавляем ещё одно (но не больше трёх раз).
+    let owner = new Map<string, number>();
+    for (let attempt = 0; ; attempt++) {
+      owner = growSeas(component, count, waterByKey, washed, rng);
+      const worst = Math.max(
+        ...Array.from({ length: count }, (_, i) => washed(component.filter((cell) => owner.get(key(cell)) === i)).size),
+      );
+      if (worst <= SEA_MAX || count >= component.length || attempt >= 3) break;
+      count += 1;
+    }
+    for (const [k, i] of owner) result.set(k, nextId + i);
+    nextId += count;
+  }
+  return result;
+}
+
+/** Перекидывает граничные клетки воды в соседнее море, пока это уменьшает худший перекос омываемой суши. */
+function balanceSeas(
+  owner: Map<string, number>,
+  component: readonly Coord[],
+  count: number,
+  washed: (cells: Iterable<Coord>) => Set<string>,
+  waterByKey: Map<string, Coord>,
+): void {
+  if (count < 2) return;
+  const members = (region: number) => component.filter((cell) => owner.get(key(cell)) === region);
+  const coast = (cells: Coord[]) => washed(cells).size;
+  const connected = (cells: Coord[]) => {
+    const first = cells[0];
+    if (!first) return false;
+    const inside = new Set(cells.map(key));
+    const reached = new Set([key(first)]);
+    const stack: Coord[] = [first];
+    for (let cell = stack.pop(); cell; cell = stack.pop()) {
+      for (const next of neighbors(cell)) {
+        if (!inside.has(key(next)) || reached.has(key(next))) continue;
+        reached.add(key(next));
+        stack.push(waterByKey.get(key(next))!);
+      }
+    }
+    return reached.size === cells.length;
+  };
+
+  for (let step = 0; step < 80; step++) {
+    let moved = false;
+    for (const cell of component) {
+      const from = owner.get(key(cell))!;
+      const targets = new Set(
+        neighbors(cell).map((next) => owner.get(key(next))).filter((region): region is number => region !== undefined && region !== from),
+      );
+      for (const to of targets) {
+        const source = members(from);
+        const target = members(to);
+        const rest = source.filter((c) => key(c) !== key(cell));
+        if (rest.length === 0 || !connected(rest)) continue;
+        if (Math.max(coast(rest), coast([...target, cell])) < Math.max(coast(source), coast(target))) {
+          owner.set(key(cell), to);
+          moved = true;
+          break;
+        }
+      }
+      if (moved) break;
+    }
+    if (!moved) break;
+  }
+}
+
+/** Берёт `count` самых удалённых друг от друга клеток воды как зёрна, растит моря одновременно и выравнивает границы. */
+function growSeas(
+  component: readonly Coord[],
+  count: number,
+  waterByKey: Map<string, Coord>,
+  washed: (cells: Iterable<Coord>) => Set<string>,
+  rng: Rng,
+): Map<string, number> {
+  const seeds = [pick(component, rng)];
+  while (seeds.length < count) {
+    let best = component[0]!;
+    let bestGap = -1;
+    for (const cell of component) {
+      const gap = Math.min(...seeds.map((seed) => distance(seed, cell)));
+      if (gap > bestGap) [best, bestGap] = [cell, gap];
+    }
+    seeds.push(best);
+  }
+
+  const owner = new Map<string, number>(seeds.map((seed, i) => [key(seed), i] as const));
+  const queue = [...seeds];
+  for (let i = 0; i < queue.length; i++) {
+    const cell = queue[i]!;
+    for (const next of neighbors(cell)) {
+      const other = waterByKey.get(key(next));
+      if (other && !owner.has(key(other))) {
+        owner.set(key(other), owner.get(key(cell))!);
+        queue.push(other);
+      }
+    }
+  }
+  balanceSeas(owner, component, count, washed, waterByKey);
+  return owner;
 }

@@ -17,6 +17,7 @@ import {
 import type { Rng } from './random';
 import { fail, ok } from './result';
 import { colonyChains } from './roads';
+import { seaLinks } from './seas';
 
 const hexOf = (state: GameState, unit: Unit) => state.hexes.find((hex) => sameCell(hex, unit));
 const isCapturedNow = (state: GameState, unit: Unit) =>
@@ -25,7 +26,7 @@ const isCapturedNow = (state: GameState, unit: Unit) =>
 /** Цепочки колоний игрока: колонии, соединённые дорогами (дороги общие, любого игрока). */
 export function chainsOf(state: GameState, playerId: string, roads: readonly Road[] = state.roads): string[][] {
   const colonies = state.units.filter((unit) => unit.ownerId === playerId && UNIT_KINDS[unit.kind].colony);
-  return colonyChains(colonies, roads);
+  return colonyChains(colonies, [...roads, ...seaLinks(state, playerId)]); // флот соединяет прибрежные колонии своего моря
 }
 
 /** Колония, к цепочке которой относится добывающее здание: оно само или колония его владельца в той же локации. */

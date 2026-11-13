@@ -10,7 +10,7 @@ export const roadBetween = (roads: readonly Road[], x: Coord, y: Coord): Road | 
  * Цепочки колоний: колонии, соединённые переданными дорогами (напрямую или через промежуточные клетки).
  * Колония без дорог — цепочка из одной колонии.
  */
-export function colonyChains(colonies: readonly (Coord & { id: string })[], roads: readonly Road[]): string[][] {
+export function colonyChains(colonies: readonly (Coord & { id: string })[], roads: readonly { a: Coord; b: Coord }[]): string[][] {
   const links = new Map<string, string[]>();
   const link = (from: Coord, to: Coord) => links.set(key(from), [...(links.get(key(from)) ?? []), key(to)]);
   for (const road of roads) {

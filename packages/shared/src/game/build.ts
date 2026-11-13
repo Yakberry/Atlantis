@@ -145,7 +145,12 @@ export function build(state: GameState, playerId: string, action: BuildAction): 
         return fail('Особое здание строится только в локации, где уже стоит ваша колония');
       }
       if (here.some((u) => isSpecialBuilding(u.kind))) return fail('В этой локации уже есть особое здание');
-      if (building === 'fleet' && !isCoastal(state, at)) return fail('Флот строится только на прибрежной локации');
+      if (building === 'fleet') {
+        if (!isCoastal(state, at)) return fail('Флот строится только на прибрежной локации');
+        const water = action.to && distance(at, action.to) === 1 ? hexAt(state, action.to) : undefined;
+        if (!water || water.type !== 'sea' || water.sea === null) return fail('Укажите соседнее море, в сторону которого строится флот');
+        return ok({ ...next, units: [...state.units, { ...spawn(state, 'fleet', playerId, at), sea: water.sea }] });
+      }
       return ok({ ...next, units: [...state.units, spawn(state, building, playerId, at)] });
 
     case 'unit':

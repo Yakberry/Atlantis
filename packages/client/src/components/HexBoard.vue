@@ -6,6 +6,7 @@ import {
   fullCost,
   isCaptured,
   isSpecialBuilding,
+  neighbors,
   roadBetween,
   sameCell,
   UNIT_KINDS,
@@ -17,7 +18,7 @@ import {
   type UnitKind,
 } from '@atlantis/shared';
 import { computed, ref, watch } from 'vue';
-import { boardBounds, COLONY_POINTS, FORT_POINTS, HEX_IMAGE, HEX_POINTS, hexCenter, RIDER_POINTS, unitSlot } from '../board/layout';
+import { boardBounds, COLONY_POINTS, FORT_POINTS, HEX_IMAGE, HEX_POINTS, HEX_SIZE, hexCenter, RIDER_POINTS, unitSlot } from '../board/layout';
 import {
   CONTESTED_STROKE,
   FOG_FILL,
@@ -99,6 +100,7 @@ type Tile = {
   site: boolean;
   siteSelected: boolean;
   roadTarget: boolean;
+  seaTarget: boolean;
   units: TileUnit[];
 };
 
@@ -110,9 +112,13 @@ const selectedId = ref<string | null>(null);
 /** Строительство: выбранная локация и режим выбора конца дороги. */
 const siteCell = ref<Coord | null>(null);
 const roadMode = ref(false);
+/** Флот: выбор соседней клетки воды — моря, в сторону которого строится флот. */
+const seaMode = ref(false);
+const buildMode = computed(() => (roadMode.value ? 'road' : seaMode.value ? 'fleet' : null));
 const clearBuild = () => {
   siteCell.value = null;
   roadMode.value = false;
+  seaMode.value = false;
 };
 
 /** Приказы можно отдавать, пока игра идёт и мы не завершили текущую фазу. */
@@ -166,6 +172,13 @@ const harvestedChain = computed(() => {
 const siteKeys = computed(() => new Set(props.game.sites.map(keyOf)));
 const siteHex = computed(() => (siteCell.value ? visibleHex(siteCell.value) : undefined));
 
+/** Клетки воды рядом с выбранной локацией: любая из них задаёт море для флота. */
+const seaTargets = computed<Coord[]>(() => {
+  const at = siteCell.value;
+  if (!at) return [];
+  return props.game.hexes.filter((hex) => hex.visible && hex.terrain === 'sea' && distance(at, hex) === 1).map(({ q, r }) => ({ q, r }));
+});
+
 const roadExists = (a: Coord, b: Coord) =>
   props.game.roads.some((road) => (sameCell(road.a, a) && sameCell(road.b, b)) || (sameCell(road.a, b) && sameCell(road.b, a)));
 
@@ -209,8 +222,11 @@ const showBuildMenu = computed(() => props.game.phase === 'build' && canAct.valu
 function onPick(type: BuildingType) {
   const at = siteCell.value;
   if (!at) return;
-  if (type === 'road') {
-    roadMode.value = !roadMode.value;
+  if (type === 'road' || type === 'fleet') {
+    const road = type === 'road';
+    const turnOn = !(road ? roadMode.value : seaMode.value);
+    roadMode.value = road && turnOn;
+    seaMode.value = !road && turnOn;
     return;
   }
   emit('build', type, at);
@@ -239,6 +255,28 @@ function unitTitle(
   if (unit.tired) return `${name}: уже добыто в этом ходу`;
   return unit.harvestable ? 'Нажмите, чтобы добыть ресурс' : name;
 }
+
+/** Границы морей: лёгкая красная линия вдоль общей грани двух клеток воды, принадлежащих разным морям. */
+const seaBorders = computed(() => {
+  const byKey = new Map(props.game.hexes.map((hex) => [keyOf(hex), hex] as const));
+  const lines: { key: string; x1: number; y1: number; x2: number; y2: number }[] = [];
+  for (const hex of props.game.hexes) {
+    if (!hex.visible || hex.sea === null) continue;
+    for (const next of neighbors(hex)) {
+      const other = byKey.get(keyOf(next));
+      if (!other || !other.visible || other.sea === null || other.sea === hex.sea || keyOf(hex) > keyOf(other)) continue;
+      const a = hexCenter(hex);
+      const b = hexCenter(other);
+      const length = Math.hypot(b.x - a.x, b.y - a.y);
+      const px = (-(b.y - a.y) / length) * (HEX_SIZE / 2);
+      const py = ((b.x - a.x) / length) * (HEX_SIZE / 2);
+      const mx = (a.x + b.x) / 2;
+      const my = (a.y + b.y) / 2;
+      lines.push({ key: `${keyOf(hex)}|${keyOf(other)}`, x1: mx - px, y1: my - py, x2: mx + px, y2: my + py });
+    }
+  }
+  return lines;
+});
 
 /** Дорога — небольшой прямоугольник на общей грани двух локаций, вытянутый вдоль линии между их центрами. */
 const roadRects = computed(() =>
@@ -271,11 +309,14 @@ function toTile(hex: HexView): Tile {
       selected.value !== undefined &&
       hex.visible &&
       hex.terrain === UNIT_KINDS[selected.value.kind].terrain &&
-      distance(selected.value.hex, hex) === 1 &&
-      (props.game.stage !== 'roads' || roadBetween(props.game.roads, selected.value.hex, hex) !== undefined),
+      // Шаг в соседнюю клетку (на этапе «дороги» — по дороге) или морской переход (флот).
+      ((distance(selected.value.hex, hex) === 1 &&
+        (props.game.stage !== 'roads' || roadBetween(props.game.roads, selected.value.hex, hex) !== undefined)) ||
+        (props.game.seaMoves[selectedId.value ?? '']?.some((cell) => sameCell(cell, hex)) ?? false)),
     site: siteKeys.value.has(key),
     siteSelected: siteCell.value !== null && sameCell(siteCell.value, hex),
     roadTarget: roadMode.value && roadTargets.value.some((cell) => sameCell(cell, hex)),
+    seaTarget: seaMode.value && seaTargets.value.some((cell) => sameCell(cell, hex)),
   };
 
   if (!hex.visible) {
@@ -380,9 +421,13 @@ function onTileClick(tile: Tile) {
     if (at && roadMode.value && tile.roadTarget) {
       emit('build', 'road', at, { q: tile.q, r: tile.r });
       clearBuild();
+    } else if (at && seaMode.value && tile.seaTarget) {
+      emit('build', 'fleet', at, { q: tile.q, r: tile.r });
+      clearBuild();
     } else if (tile.site) {
       siteCell.value = { q: tile.q, r: tile.r };
       roadMode.value = false;
+      seaMode.value = false;
     } else {
       clearBuild();
     }
@@ -414,7 +459,7 @@ function onTileClick(tile: Tile) {
         v-for="tile in tiles"
         :key="tile.key"
         :transform="`translate(${tile.x} ${tile.y})`"
-        :class="{ target: tile.targetable || tile.site || tile.roadTarget }"
+        :class="{ target: tile.targetable || tile.site || tile.roadTarget || tile.seaTarget }"
         @click="onTileClick(tile)"
       >
         <title>{{ tile.title }}</title>
@@ -427,7 +472,7 @@ function onTileClick(tile: Tile) {
           stroke-width="4"
           stroke-linejoin="round"
         />
-        <polygon v-if="tile.targetable || tile.roadTarget" :points="HEX_POINTS" class="target-overlay" />
+        <polygon v-if="tile.targetable || tile.roadTarget || tile.seaTarget" :points="HEX_POINTS" class="target-overlay" />
         <polygon v-if="tile.site" :points="HEX_POINTS" :class="['site-overlay', { chosen: tile.siteSelected }]" />
         <g
           v-for="(unit, i) in tile.units"
@@ -467,6 +512,7 @@ function onTileClick(tile: Tile) {
         <text v-if="tile.name" y="21" class="tile-name">{{ tile.name }}</text>
         <text v-if="tile.sub" y="33" class="tile-sub">{{ tile.sub }}</text>
       </g>
+      <line v-for="line in seaBorders" :key="line.key" class="sea-border" :x1="line.x1" :y1="line.y1" :x2="line.x2" :y2="line.y2" />
       <g
         v-for="road in roadRects"
         :key="road.id"
@@ -491,7 +537,7 @@ function onTileClick(tile: Tile) {
       v-if="showBuildMenu"
       :title="`Строительство: «${siteHex?.name ?? ''}»`"
       :cards="buildCards"
-      :road-mode="roadMode"
+      :mode="buildMode"
       @pick="onPick"
       @close="clearBuild"
     />
