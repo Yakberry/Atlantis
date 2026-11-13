@@ -149,7 +149,7 @@ export function build(state: GameState, playerId: string, action: BuildAction): 
         if (!isCoastal(state, at)) return fail('Флот строится только на прибрежной локации');
         const water = action.to && distance(at, action.to) === 1 ? hexAt(state, action.to) : undefined;
         if (!water || water.type !== 'sea' || water.sea === null) return fail('Укажите соседнее море, в сторону которого строится флот');
-        return ok({ ...next, units: [...state.units, { ...spawn(state, 'fleet', playerId, at), sea: water.sea }] });
+        return ok({ ...next, units: [...state.units, { ...spawn(state, 'fleet', playerId, at), sea: water.sea, dock: { q: water.q, r: water.r } }] });
       }
       return ok({ ...next, units: [...state.units, spawn(state, building, playerId, at)] });
 

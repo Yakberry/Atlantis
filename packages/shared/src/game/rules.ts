@@ -70,7 +70,7 @@ export function createGame(playerIds: string[], settings: GameSettings, rng: Rng
     slots: Object.fromEntries(playerIds.map((id, i) => [id, i])),
     turn: 1,
     phase: 'maneuver',
-    stage: 'riders',
+    stage: 'fast',
     ready: [],
     stock,
     shownStock: Object.fromEntries(playerIds.map((id) => [id, { ...START_STOCK }])),

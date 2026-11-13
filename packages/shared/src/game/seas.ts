@@ -11,14 +11,13 @@ export function washedBy(state: GameState, sea: number): Coord[] {
     .map(({ q, r }) => ({ q, r }));
 }
 
-/** Флоты игрока, которые сейчас работают: у них известно море и в их локации нет противника. */
+/** Флоты игрока с известным морем. При осаде у флота блокируется только добыча еды: цепочка, обзор и морские переходы работают. */
 export const activeFleets = (state: GameState, playerId: string): (Unit & { sea: number })[] =>
   state.units.filter(
     (unit): unit is Unit & { sea: number } =>
       unit.ownerId === playerId &&
       unit.kind === 'fleet' &&
-      unit.sea !== undefined &&
-      !isCaptured(playerId, state.units.filter((other) => sameCell(other, unit))),
+      unit.sea !== undefined,
   );
 
 /** Что видит флот: всё своё море и все омываемые им локации суши. */

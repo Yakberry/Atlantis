@@ -1,6 +1,7 @@
 import { distance, sameCell, type Coord } from './hex';
 import { buildSites } from './build';
-import { fleetSight, seaRoutes } from './seas';
+import { canStillMove, legalSteps } from './maneuver';
+import { fleetSight } from './seas';
 import { currentPrice, effectivePrice } from './trade';
 import { chainsOf } from './harvest';
 import { supplyNeeds } from './supply';
@@ -13,10 +14,12 @@ import { emptyStock, terrainOf, UNIT_KINDS, type GameState, type GameView, type 
 const knownPosition = (unit: Unit, viewerId: string): Coord => (unit.ownerId === viewerId ? unit : unit.revealed);
 
 /** Владелец знает о юните всё; остальные видят его вид (`shownKind`) и ничего о его усталости и столкновениях. */
-const toUnitView = (unit: Unit, viewerId: string): UnitView =>
-  unit.ownerId === viewerId
-    ? { id: unit.id, ownerId: unit.ownerId, kind: unit.kind, tired: unit.tired, blocked: unit.blocked }
-    : { id: unit.id, ownerId: unit.ownerId, kind: unit.shownKind };
+const toUnitView = (unit: Unit, viewerId: string): UnitView => {
+  const dock = unit.dock ? { dock: unit.dock } : {}; // у флота видна «дорога» к его морю
+  return unit.ownerId === viewerId
+    ? { id: unit.id, ownerId: unit.ownerId, kind: unit.kind, tired: unit.tired, blocked: unit.blocked, ...dock }
+    : { id: unit.id, ownerId: unit.ownerId, kind: unit.shownKind, ...dock };
+};
 
 /** Игрок видит локацию: рядом с ней (в пределах обзора вида) стоит его юнит или постройка. */
 export const canSee = (state: GameState, viewerId: string, cell: Coord): boolean =>
@@ -63,13 +66,10 @@ export function viewFor(state: GameState, viewerId: string): GameView {
     roads: shownRoads.filter((road) => canSee(state, viewerId, road.a) || canSee(state, viewerId, road.b)),
     chains: chainsOf(state, viewerId, shownRoads),
     trade: state.phase === 'trade' ? tradeView(state, viewerId) : null,
-    seaMoves:
-      state.phase === 'maneuver' && state.stage === 'roads'
+    moves:
+      state.phase === 'maneuver'
         ? Object.fromEntries(
-            eyes
-              .filter((unit) => UNIT_KINDS[unit.kind].mobile && !unit.tired && !unit.blocked)
-              .map((unit) => [unit.id, seaRoutes(state, unit)] as const)
-              .filter(([, routes]) => routes.length > 0),
+            eyes.filter((unit) => canStillMove(state, unit)).map((unit) => [unit.id, legalSteps(state, unit)] as const),
           )
         : {},
     sites: state.phase === 'build' && !state.ready.includes(viewerId) ? buildSites(state, viewerId) : [],

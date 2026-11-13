@@ -278,6 +278,21 @@ const seaBorders = computed(() => {
   return lines;
 });
 
+/** «Дорога» флота к клетке моря, к которому он обращён. */
+const dockRects = computed(() => {
+  const rects: { id: string; x: number; y: number; angle: number }[] = [];
+  for (const hex of props.game.hexes) {
+    if (!hex.visible) continue;
+    for (const unit of hex.units) {
+      if (unit.kind !== 'fleet' || !unit.dock) continue;
+      const a = hexCenter(hex);
+      const b = hexCenter(unit.dock);
+      rects.push({ id: unit.id, x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, angle: (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI });
+    }
+  }
+  return rects;
+});
+
 /** Дорога — небольшой прямоугольник на общей грани двух локаций, вытянутый вдоль линии между их центрами. */
 const roadRects = computed(() =>
   props.game.roads.map((road) => {
@@ -308,11 +323,8 @@ function toTile(hex: HexView): Tile {
       canAct.value &&
       selected.value !== undefined &&
       hex.visible &&
-      hex.terrain === UNIT_KINDS[selected.value.kind].terrain &&
-      // Шаг в соседнюю клетку (на этапе «дороги» — по дороге) или морской переход (флот).
-      ((distance(selected.value.hex, hex) === 1 &&
-        (props.game.stage !== 'roads' || roadBetween(props.game.roads, selected.value.hex, hex) !== undefined)) ||
-        (props.game.seaMoves[selectedId.value ?? '']?.some((cell) => sameCell(cell, hex)) ?? false)),
+      // Куда можно пойти, решает сервер: клиент подсвечивает только присланные им клетки.
+      (props.game.moves[selectedId.value ?? '']?.some((cell) => sameCell(cell, hex)) ?? false),
     site: siteKeys.value.has(key),
     siteSelected: siteCell.value !== null && sameCell(siteCell.value, hex),
     roadTarget: roadMode.value && roadTargets.value.some((cell) => sameCell(cell, hex)),
@@ -358,9 +370,8 @@ function toTile(hex: HexView): Tile {
         sprite: slot === null ? undefined : spriteUrl(`units/${unit.kind}`),
         title: unitTitle({ ...part, chainLocked }),
         selected: unit.id === selectedId.value,
-        // На этапе «кавалерия» ходят только быстрые юниты; столкнувшиеся не ходят до конца хода.
-        selectable:
-          idle && props.game.phase === 'maneuver' && info.mobile && unit.blocked !== true && (props.game.stage !== 'riders' || info.fast),
+        // Выбрать можно юнита, которому сервер разрешил хоть один ход.
+        selectable: idle && props.game.phase === 'maneuver' && (props.game.moves[unit.id]?.length ?? 0) > 0,
       };
     }),
   };
@@ -519,6 +530,9 @@ function onTileClick(tile: Tile) {
         class="road"
         :transform="`translate(${road.x} ${road.y}) rotate(${road.angle})`"
       >
+        <rect x="-13" y="-5" width="26" height="10" rx="2" />
+      </g>
+      <g v-for="dock in dockRects" :key="dock.id" class="dock" :transform="`translate(${dock.x} ${dock.y}) rotate(${dock.angle})`">
         <rect x="-13" y="-5" width="26" height="10" rx="2" />
       </g>
       <g v-for="floater in floaters" :key="floater.id" :transform="`translate(${floater.x} ${floater.y})`">

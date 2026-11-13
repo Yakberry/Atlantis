@@ -85,7 +85,7 @@ function advance(state: GameState, rng: Rng): { state: GameState; reports: Repor
     }
     case 'trade': {
       // Конец хода: начинается новый.
-      const next = { ...state, phase: 'maneuver' as const, stage: 'riders' as const, ready: [], turn: state.turn + 1 };
+      const next = { ...state, phase: 'maneuver' as const, stage: 'fast' as const, ready: [], turn: state.turn + 1 };
       return { state: reveal(checkTurnLimit(next)), reports: [] };
     }
   }

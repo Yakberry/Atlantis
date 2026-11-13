@@ -16,15 +16,15 @@ export const markDiscovered = (hexes: Hex[], units: Unit[]): Hex[] =>
 export function legalSteps(state: GameState, unit: Unit): Coord[] {
   const kind = UNIT_KINDS[unit.kind];
   if (!kind.mobile || unit.blocked) return [];
-  if (state.stage === 'riders' && !kind.fast) return [];
 
   const adjacent = neighbors(unit).filter((cell) => {
     const hex = state.hexes.find((h) => sameCell(h, cell));
     if (!hex || terrainOf(hex.type) !== kind.terrain) return false;
-    return state.stage !== 'roads' || roadBetween(state.roads, unit, cell) !== undefined;
+    // Быстрое перемещение: быстрые юниты и все, кто идёт по дороге.
+    return state.stage !== 'fast' || kind.fast || roadBetween(state.roads, unit, cell) !== undefined;
   });
-  // На этапе «дороги» флот даёт морские переходы между локациями своего моря.
-  return state.stage === 'roads' ? [...adjacent, ...seaRoutes(state, unit)] : adjacent;
+  // Обычное перемещение: шаг в соседнюю клетку или морской переход (флот) — один способ на этап.
+  return state.stage === 'normal' ? [...adjacent, ...seaRoutes(state, unit)] : adjacent;
 }
 
 /** Юнит ещё может пойти на этом этапе. */
@@ -38,14 +38,15 @@ export function moveUnit(state: GameState, playerId: string, unitId: string, to:
   if (!kind.mobile) return fail('Постройки не умеют двигаться');
   if (unit.blocked) return fail('Юнит столкнулся с чужими юнитами и до конца хода не может двигаться');
   if (unit.tired) return fail('Юнит уже ходил на этом этапе');
-  if (state.stage === 'riders' && !kind.fast) return fail('На этом этапе ходят только юниты с повышенной скоростью');
   const target = state.hexes.find((hex) => sameCell(hex, to));
   if (!target) return fail('Такой локации нет');
   if (kind.terrain !== terrainOf(target.type)) return fail('Сюда этот юнит пройти не может');
-  const bySea = state.stage === 'roads' && seaRoutes(state, unit).some((cell) => sameCell(cell, to));
-  if (!bySea) {
-    if (distance(unit, to) !== 1) return fail('Можно перейти только в соседнюю локацию');
-    if (state.stage === 'roads' && !roadBetween(state.roads, unit, to)) return fail('На этом этапе можно идти только по дороге или морем (флот)');
+  if (!legalSteps(state, unit).some((cell) => sameCell(cell, to))) {
+    return fail(
+      state.stage === 'fast'
+        ? 'Быстро ходят только юниты с повышенной скоростью и юниты по дороге'
+        : 'Можно перейти в соседнюю локацию или морем (флот)',
+    );
   }
 
   return ok({
