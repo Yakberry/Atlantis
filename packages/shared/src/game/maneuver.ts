@@ -30,7 +30,10 @@ export function legalSteps(state: GameState, unit: Unit): Coord[] {
 /** Юнит ещё может пойти на этом этапе. */
 export const canStillMove = (state: GameState, unit: Unit): boolean => !unit.tired && legalSteps(state, unit).length > 0;
 
-/** Шаг юнита: для владельца действует сразу, противники узнают о нём при синхронизации в конце этапа. */
+/**
+ * Шаг юнита: владелец сразу видит перенос иконки, но обзор и разведка ресурса меняются, а противники узнают о шаге
+ * только при синхронизации в конце этапа (после быстрого, после обычного перемещения, затем после боёв).
+ */
 export function moveUnit(state: GameState, playerId: string, unitId: string, to: Coord): Result<Applied> {
   const unit = state.units.find((u) => u.id === unitId && u.ownerId === playerId);
   if (!unit) return fail('Это не ваш юнит');

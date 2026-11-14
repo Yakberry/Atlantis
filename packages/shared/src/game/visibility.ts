@@ -8,7 +8,7 @@ import { supplyNeeds } from './supply';
 import { emptyStock, terrainOf, UNIT_KINDS, type GameState, type GameView, type Hex, type Unit, type UnitView } from './model';
 
 /**
- * Где игрок «знает» юнита: свои — там, где они стоят сейчас (приказ действует мгновенно),
+ * Где игрок «знает» юнита: свои — там, где они стоят сейчас (иконка переносится сразу, но обзор и разведка меняются лишь при синхронизации),
  * чужие — там, где их показали при последнем раскрытии манёвра.
  */
 const knownPosition = (unit: Unit, viewerId: string): Coord => (unit.ownerId === viewerId ? unit : unit.revealed);
@@ -23,7 +23,8 @@ const toUnitView = (unit: Unit, viewerId: string): UnitView => {
 
 /** Игрок видит локацию: рядом с ней (в пределах обзора вида) стоит его юнит или постройка. */
 export const canSee = (state: GameState, viewerId: string, cell: Coord): boolean =>
-  state.units.some((unit) => unit.ownerId === viewerId && distance(unit, cell) <= UNIT_KINDS[unit.kind].vision) ||
+  // Обзор считается от последней синхронизированной позиции (`revealed`): шаг юнита меняет обзор только после синхронизации.
+  state.units.some((unit) => unit.ownerId === viewerId && distance(unit.revealed, cell) <= UNIT_KINDS[unit.kind].vision) ||
   fleetSight(state, viewerId).has(`${cell.q},${cell.r}`); // флот видит своё море и омываемые им локации
 
 /** Торговля глазами игрока: принятые им цены и текущее предложение; будущие цены он не видит. */
@@ -56,7 +57,8 @@ export function viewFor(state: GameState, viewerId: string): GameView {
   const eyes = units.filter((unit) => unit.ownerId === viewerId);
   const shownRoads = roads.filter((road) => !road.fresh || road.ownerId === viewerId);
 
-  const knowsResource = (hex: Hex) => hex.discovered || eyes.some((eye) => sameCell(eye, hex));
+  // Ресурс суши открывается только при синхронизации (`discovered`): сам шаг юнита его не разведывает.
+  const knowsResource = (hex: Hex) => hex.discovered;
 
   return {
     ...rest,
