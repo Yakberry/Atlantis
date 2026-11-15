@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { RESOURCES, type BuildingType, type UnitKind, type Stock, type Resource } from '@atlantis/shared';
-import { computed } from 'vue';
+import { computed, ref  } from 'vue';
 import { RESOURCE_COLORS, RESOURCE_LABELS } from '../board/palette';
 import { spriteUrl } from '../board/sprites';
 
 export type BuildCard = { type: UnitKind; cost: Stock; disabled: boolean; reason: string };
 
-const props = defineProps<{ title: string; cards: BuildCard[]; mode: 'road' | 'fleet' | null; }>();
+const props = defineProps<{ open: boolean; title: string; cards: BuildCard[]; mode: 'road' | 'fleet' | null; }>();
 const emit = defineEmits<{ pick: [type: UnitKind]; close: [] }>();
 
 const HIRES: readonly UnitKind[] = ['unit', 'archer', 'rider', 'catapult', 'scout'];
@@ -42,10 +42,12 @@ const INFO: Record<UnitKind, { name: string; hint: string; glyph?: string }> = {
   scout: { name: 'Разведчик', hint: 'Производит любая ваша колония. Поджигать колонии и здания не умеют. Снабжение: 1 еда и 1 медь.' },
 };
 
-const groups = computed(() => [
-  { title: 'Постройки', cards: props.cards.filter((card) => !HIRES.includes(card.type)) },
-  { title: 'Найм юнитов', cards: props.cards.filter((card) => HIRES.includes(card.type)) },
-]);
+const tab = ref<'buildings' | 'units'>('buildings');
+const TABS = [
+  { id: 'buildings', label: 'Здания' },
+  { id: 'units', label: 'Юниты' },
+] as const;
+const shown = computed(() => props.cards.filter((card) => (tab.value === 'units') === HIRES.includes(card.type)));
 
 const art = (type: UnitKind) => spriteUrl(`units/${type}`);
 const resourceIcon = (resource: Resource) => spriteUrl(`resources/${resource}`);
@@ -53,43 +55,52 @@ const costOf = (cost: Stock) => RESOURCES.filter((resource) => cost[resource] > 
 </script>
 
 <template>
-  <div class="build-menu" role="group" aria-label="Строительство">
-    <header>
-      <strong>{{ title }}</strong>
-      <button class="secondary close" type="button" aria-label="Закрыть меню" @click="emit('close')">×</button>
-    </header>
-    <p v-if="mode === 'road'" class="muted">Выберите соседнюю подсвеченную локацию, к которой пойдёт дорога.</p>
-    <p v-else-if="mode === 'fleet'" class="muted">Выберите соседнюю клетку воды: флот будет направлен к её морю.</p>
-    <section v-for="group in groups" :key="group.title">
-      <h3 class="muted">{{ group.title }}</h3>
-      <ul class="cards">
-        <li v-for="card in group.cards" :key="card.type">
-          <button
-            type="button"
-            :class="['card', { active: roadMode && card.type === 'road' }]"
-            :disabled="card.disabled"
-            :title="card.reason || INFO[card.type].hint"
-            @click="emit('pick', card.type)"
-          >
-            <span class="card-art" aria-hidden="true">
-              <img v-if="art(card.type)" :src="art(card.type)" alt="" />
-              <template v-else>{{ INFO[card.type].glyph }}</template>
-            </span>
-            <strong>{{ INFO[card.type].name }}</strong>
-            <span class="card-cost">
-              <span
-                v-for="item in costOf(card.cost)"
-                :key="item.resource"
-                class="chip"
-                :title="RESOURCE_LABELS[item.resource]"
-              >
-                <img class="card-cost-art" v-if="resourceIcon(item.resource)" :src="resourceIcon(item.resource)" alt="" />
-              {{ item.amount }}
-            </span>
-            </span>
-          </button>
-        </li>
-      </ul>
-    </section>
-  </div>
+  <Transition name="slide">
+    <aside v-if="open" class="build-window" aria-label="Строительство">
+      <header class="trade-tabs" role="tablist">
+        <button
+          v-for="item in TABS"
+          :key="item.id"
+          type="button"
+          role="tab"
+          :aria-selected="tab === item.id"
+          :class="['tab', { active: tab === item.id }]"
+          @click="tab = item.id"
+        >
+          {{ item.label }}
+        </button>
+        <button class="secondary close" type="button" aria-label="Закрыть окно строительства" @click="emit('close')">×</button>
+      </header>
+      <div class="trade-body">
+        <ul class="cards">
+          <li v-for="card in shown" :key="card.type">
+            <button
+              type="button"
+              class="card"
+              :disabled="card.disabled"
+              :title="card.reason || INFO[card.type].hint"
+              @click="emit('pick', card.type)"
+            >
+              <span class="card-art" aria-hidden="true">
+                <img v-if="art(card.type)" :src="art(card.type)" alt="" />
+                <template v-else>{{ INFO[card.type].glyph }}</template>
+              </span>
+              <strong>{{ INFO[card.type].name }}</strong>
+              <span class="card-cost">
+                 <span
+                     v-for="item in costOf(card.cost)"
+                     :key="item.resource"
+                     class="chip"
+                     :title="RESOURCE_LABELS[item.resource]"
+                 >
+                    <img class="card-cost-art" v-if="resourceIcon(item.resource)" :src="resourceIcon(item.resource)" alt="" />
+                    {{ item.amount }}
+                 </span>
+              </span>
+            </button>
+          </li>
+        </ul>
+      </div>
+    </aside>
+  </Transition>
 </template>

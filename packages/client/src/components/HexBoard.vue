@@ -115,6 +115,10 @@ const roadMode = ref(false);
 /** Флот: выбор соседней клетки воды — моря, в сторону которого строится флот. */
 const seaMode = ref(false);
 const buildMode = computed(() => (roadMode.value ? 'road' : seaMode.value ? 'fleet' : null));
+const cancelPick = () => {
+  roadMode.value = false;
+  seaMode.value = false;
+};
 const clearBuild = () => {
   siteCell.value = null;
   roadMode.value = false;
@@ -547,11 +551,15 @@ function onTileClick(tile: Tile) {
       <button class="secondary" type="button" aria-label="Отдалить" @click="zoomBy(1 / 1.4)">−</button>
       <button class="secondary" type="button" aria-label="Показать всю карту" @click="fit">⌖</button>
     </div>
+    <!-- Пока выбирается соседняя клетка (дорога, море для флота), окно убирается, чтобы не закрывать цели -->
+    <div v-if="buildMode" class="pick-banner">
+      <span>{{ buildMode === 'road' ? 'Выберите соседнюю подсвеченную локацию для дороги.' : 'Выберите соседнюю клетку воды: флот будет направлен к её морю.' }}</span>
+      <button class="secondary" type="button" @click="cancelPick">Отмена</button>
+    </div>
     <BuildMenu
-      v-if="showBuildMenu"
-      :title="`Строительство: «${siteHex?.name ?? ''}»`"
+      :open="showBuildMenu && buildMode === null"
+      :title="`Локация «${siteHex?.name ?? ''}»`"
       :cards="buildCards"
-      :mode="buildMode"
       @pick="onPick"
       @close="clearBuild"
     />

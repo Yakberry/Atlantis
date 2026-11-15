@@ -63,7 +63,11 @@ export function viewFor(state: GameState, viewerId: string): GameView {
   return {
     ...rest,
     stock: stock[viewerId] ?? emptyStock(),
-    rivals: Object.fromEntries(Object.entries(shownStock).filter(([id]) => id !== viewerId)),
+    rivals: Object.fromEntries(
+      Object.entries(shownStock)
+        .filter(([id]) => id !== viewerId)
+        .map(([id, rival]) => [id, Object.values(rival).reduce((sum, amount) => sum + amount, 0)] as const),
+    ),
     supply: supplyNeeds(eyes),
     roads: shownRoads.filter((road) => canSee(state, viewerId, road.a) || canSee(state, viewerId, road.b)),
     chains: chainsOf(state, viewerId, shownRoads),

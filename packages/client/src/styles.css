@@ -230,7 +230,8 @@ button.secondary { background: transparent; border-color: var(--line); color: va
 .map-stage { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
 /* Окно выдвигается слева поверх трети карты: лежит внутри .map-stage, поэтому карту не двигает и нижние кнопки не закрывает. */
-.trade-window {
+.trade-window,
+.build-window {
   position: absolute;
   top: 0;
   bottom: 0;
@@ -277,3 +278,55 @@ button.secondary { background: transparent; border-color: var(--line); color: va
 /* «Дорога» флота к морю */
 .dock { pointer-events: none; }
 .dock rect { fill: #8cc8ff; stroke: rgba(0, 0, 0, 0.65); stroke-width: 1.5; }
+
+/* ---------- Компактный экран комнаты ---------- */
+.page.wide { padding: 0.5rem; }
+.room { gap: 0.5rem; }
+.room.no-chat { grid-template-columns: minmax(0, 1fr); }
+.panel.stage { gap: 0.4rem; padding: 0.6rem; }
+.game { gap: 0.4rem; }
+.stage-header { flex-wrap: nowrap; gap: 0.5rem 1rem; }
+.players .total { margin-left: 0.4rem; font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.settings-menu { position: relative; }
+.settings-menu summary {
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+  list-style: none;
+  white-space: nowrap;
+}
+.settings-menu summary::-webkit-details-marker { display: none; }
+.menu-panel {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  z-index: 20;
+  display: grid;
+  gap: 0.6rem;
+  min-width: 17rem;
+  max-width: 24rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+}
+.menu-panel p { margin: 0; }
+.menu-link { overflow-wrap: anywhere; font-size: 0.85rem; }
+
+.pick-banner {
+  position: absolute;
+  top: 0.5rem;
+  left: 50%;
+  z-index: 6;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: rgba(11, 42, 51, 0.94);
+}

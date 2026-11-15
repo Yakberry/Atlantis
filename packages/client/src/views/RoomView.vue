@@ -3,15 +3,17 @@ import { onBeforeUnmount, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import ChatPanel from '../components/ChatPanel.vue';
 import GameBoard from '../components/GameBoard.vue';
-import GraphicsToggle from '../components/GraphicsToggle.vue';
 import LobbySettings from '../components/LobbySettings.vue';
 import PlayerList from '../components/PlayerList.vue';
 import ResourceBar from '../components/ResourceBar.vue';
+import SettingsMenu from '../components/SettingsMenu.vue';
 import { useAction } from '../composables/useAction';
 import { useRoomStore } from '../stores/room';
+import { useSettingsStore } from '../stores/settings';
 
 const props = defineProps<{ id: string }>();
 const store = useRoomStore();
+const settings = useSettingsStore();
 const router = useRouter();
 const { error: joinError, run: tryJoin } = useAction();
 const { error: actionError, run } = useAction();
@@ -30,15 +32,15 @@ onBeforeUnmount(() => store.detach());
   <main class="page wide">
     <p v-if="joinError" class="error">{{ joinError }} <RouterLink to="/">В лобби</RouterLink></p>
 
-    <div v-else-if="store.room" class="room">
+    <div v-else-if="store.room" :class="['room', { 'no-chat': settings.chatHidden }]">
       <section class="panel stage">
+        <!-- Шапка в одну строку: комната, кнопка выхода и простое отображение живут в меню настроек -->
         <header class="stage-header">
-          <h1>Комната {{ store.room.id }}</h1>
           <PlayerList :room="store.room" />
-          <div class="stage-actions">
-            <button class="secondary" @click="run(leaveRoom)">Выйти из комнаты</button>
-            <GraphicsToggle />
-          </div>
+          <button class="secondary" type="button" @click="settings.chatHidden = !settings.chatHidden">
+            {{ settings.chatHidden ? 'Показать чат' : 'Скрыть чат' }}
+          </button>
+          <SettingsMenu :room-id="store.room.id" :link="link" @leave="run(leaveRoom)" />
         </header>
 
         <ResourceBar v-if="store.room.game" :stock="store.room.game.stock" :supply="store.room.game.supply" />
@@ -56,7 +58,7 @@ onBeforeUnmount(() => store.detach());
         <p v-if="actionError" class="error">{{ actionError }}</p>
       </section>
 
-      <ChatPanel />
+      <ChatPanel v-if="!settings.chatHidden" />
     </div>
   </main>
 </template>
