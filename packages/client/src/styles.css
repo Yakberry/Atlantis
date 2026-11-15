@@ -330,3 +330,78 @@ button.secondary { background: transparent; border-color: var(--line); color: va
   border-radius: 8px;
   background: rgba(11, 42, 51, 0.94);
 }
+
+/* ---------- Мобильный интерфейс ---------- */
+html { -webkit-text-size-adjust: 100%; }
+body { overscroll-behavior: none; }
+.board { -webkit-tap-highlight-color: transparent; }
+.card .reason { max-width: 8rem; font-size: 0.7rem; line-height: 1.2; color: var(--danger); text-align: center; }
+.chat-badge { margin-left: 0.35rem; padding: 0 0.4rem; border-radius: 999px; background: var(--accent); color: #2b1d05; font-size: 0.75rem; font-weight: 700; }
+.chat-sheet {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  height: 80dvh;
+  padding: 0.5rem 0.5rem max(0.5rem, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
+  border-radius: 12px 12px 0 0;
+  background: var(--bg);
+  box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.45);
+}
+.chat-sheet .chat { flex: 1; min-height: 0; }
+
+/* Пальцем попасть сложнее: крупные цели нажатия. */
+@media (pointer: coarse) {
+  button, select, summary { min-height: 44px; }
+  .viewport-controls button { width: 2.8rem; }
+  .trade .step { min-width: 2.8rem; }
+  input[type='checkbox'] { width: 1.3rem; height: 1.3rem; }
+}
+
+/* Телефон: узкий экран или альбомная ориентация (то же условие, что MOBILE_QUERY в useMobile.ts). */
+@media (max-width: 720px), (pointer: coarse) and (max-height: 520px) {
+  .page { padding: 1rem 0.75rem; }
+  .page.wide {
+    padding: max(0.4rem, env(safe-area-inset-top)) max(0.4rem, env(safe-area-inset-right))
+      max(0.4rem, env(safe-area-inset-bottom)) max(0.4rem, env(safe-area-inset-left));
+  }
+  .room, .room.no-chat { grid-template-columns: minmax(0, 1fr); }
+  .stage-header { flex-wrap: wrap; gap: 0.35rem 0.5rem; }
+  .players { flex: 1 1 100%; gap: 0.2rem 0.8rem; font-size: 0.85rem; }
+  .resources { flex-wrap: nowrap; gap: 0.4rem; padding-bottom: 0.2rem; overflow-x: auto; }
+  .resource { flex: none; padding: 0.1rem 0.6rem 0.1rem 0.4rem; font-size: 0.85rem; }
+  .phases { gap: 0.2rem 0.6rem; font-size: 0.85rem; }
+  .phases li:not(.current):not(.turn) { display: none; }
+  .turnbar { gap: 0.35rem; display: flex; align-content: baseline;}
+  .turnbar .hint {
+    display: -webkit-box;
+    flex: 1 1 100%;
+    overflow: hidden;
+    font-size: 0.8rem;
+    line-height: 1.3;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+  .turnbar button { flex: 1 }
+  .viewport { min-height: 200px; }
+  /* Окна торговли и строительства выезжают снизу на всю ширину. */
+  .trade-window, .build-window {
+    top: auto;
+    right: 0;
+    width: 100%;
+    min-width: 0;
+    max-height: 90%;
+    border-top: 1px solid var(--line);
+    border-right: 0;
+    border-radius: 12px 12px 0 0;
+    box-shadow: 0 -4px 14px rgba(0, 0, 0, 0.35);
+  }
+  .slide-enter-from, .slide-leave-to { transform: translateY(100%); }
+  .pick-banner { justify-content: space-between; width: calc(100% - 1rem); }
+  .menu-panel { max-width: calc(100vw - 1.5rem); }
+}

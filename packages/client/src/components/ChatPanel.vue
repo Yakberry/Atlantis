@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue';
+import { nextTick, onMounted, ref, watch } from 'vue';
 import { useAction } from '../composables/useAction';
 import { useRoomStore } from '../stores/room';
 import { useSessionStore } from '../stores/session';
@@ -18,6 +18,11 @@ watch(
     list.value?.scrollTo({ top: list.value.scrollHeight });
   },
 );
+
+onMounted(async () => {
+  await nextTick();
+  list.value?.scrollTo({ top: list.value.scrollHeight });
+});
 
 const send = () =>
   run(async () => {

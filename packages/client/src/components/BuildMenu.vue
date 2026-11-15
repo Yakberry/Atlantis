@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { RESOURCES, type BuildingType, type UnitKind, type Stock, type Resource } from '@atlantis/shared';
-import { computed, ref  } from 'vue';
+import { computed, ref } from 'vue';
 import { RESOURCE_COLORS, RESOURCE_LABELS } from '../board/palette';
 import { spriteUrl } from '../board/sprites';
 
@@ -86,6 +86,7 @@ const costOf = (cost: Stock) => RESOURCES.filter((resource) => cost[resource] > 
                 <template v-else>{{ INFO[card.type].glyph }}</template>
               </span>
               <strong>{{ INFO[card.type].name }}</strong>
+              <small v-if="card.disabled" class="reason">{{ card.reason }}</small>
               <span class="card-cost">
                  <span
                      v-for="item in costOf(card.cost)"

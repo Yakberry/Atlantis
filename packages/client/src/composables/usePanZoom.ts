@@ -109,7 +109,7 @@ export function usePanZoom(viewport: Ref<HTMLElement | null>, bounds: Ref<Bounds
     if (!before || !after) return;
 
     if (!dragged) {
-      if (Math.hypot(event.clientX - start.x, event.clientY - start.y) < DRAG_THRESHOLD) return;
+      if (Math.hypot(event.clientX - start.x, event.clientY - start.y) < (event.pointerType === 'touch' ? DRAG_THRESHOLD * 2 : DRAG_THRESHOLD)) return;
       dragged = true;
     }
     // Захват указателя только после начала перетаскивания: иначе он «съел» бы обычные клики по гексам.

@@ -46,8 +46,6 @@ const accept = () => {
 
 <template>
   <section class="trade" aria-label="Торговля с купцами">
-    <h2>Торговля с купцами</h2>
-
     <template v-if="trade.price !== null">
       <p>
         Ставка купцов: <strong class="price">{{ trade.price }}</strong> любых ваших ресурсов за 1 выбранный

@@ -176,10 +176,7 @@ const confirmDrop = () =>
         <template v-else-if="game.phase !== 'supply'">
           <template v-if="game.phase === 'trade' && trade">
             <button class="secondary" type="button" :disabled="store.isReady" @click="openTrade('merchants')">
-              Торговля с купцами ({{ trade.price ?? '—' }})
-            </button>
-            <button class="secondary" type="button" :disabled="store.isReady" @click="openTrade('players')">
-              Торговля с игроками
+              Торговля ({{ trade.price ?? '—' }})
             </button>
           </template>
           <button :disabled="store.isReady" @click="endPhase">{{ END_LABELS[game.phase] }}</button>
