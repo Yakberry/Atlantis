@@ -104,10 +104,7 @@ export function resolveBattles(state: GameState, rng: Rng): { state: GameState; 
         const target = targets[Math.floor(rng() * targets.length)];
         if (!target) continue;
         const needed = attacker.tower ? TOWER_TARGET : attackTarget(attacker.kind, target.kind);
-        // if (d6(rng) >= needed) dead.add(target.id);
-        const rngd6 = d6(rng);
-        if (rngd6 >= needed) dead.add(target.id);
-        console.log(attacker.kind, rngd6, needed, target.kind, attacker.ownerId, target.ownerId);
+        if (d6(rng) >= needed) dead.add(target.id);
       }
     }
 
@@ -140,7 +137,7 @@ export function resolveBattles(state: GameState, rng: Rng): { state: GameState; 
       if (burned) destroyed.add(target.id);
       reports.push({
         audience,
-        data: { type: 'burn', hex: where, ownerId: target.ownerId, kind: target.kind, rolls, difficulty, burned, automatic },
+        data: { type: 'burn', hex: where, ownerId: target.ownerId, kind: target.kind, rolls, difficulty, burned, automatic, attackerIds: [...new Set(attackers.map((unit) => unit.ownerId))] },
       });
     }
   }

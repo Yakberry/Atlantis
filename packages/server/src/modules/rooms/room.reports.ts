@@ -34,7 +34,7 @@ function kindsText(kinds: UnitKind[]): string {
 }
 
 /** Текст сообщения в чат для события игры. */
-export function formatReport(data: ReportData, room: RoomState): string {
+export function formatReport(data: ReportData, room: RoomState): string | null {
   switch (data.type) {
     case 'battle': {
       const losses = Object.entries(data.losses)
@@ -51,6 +51,22 @@ export function formatReport(data: ReportData, room: RoomState): string {
       const target = `${UNIT_LABELS[data.kind].toLowerCase()} игрока ${nameOf(room, data.ownerId)}`;
       const how = data.automatic ? 'катапульта поджигает без броска' : `броски ${data.rolls.join(', ')} (нужно ${data.difficulty})`;
       return `Поджог: ${target} в ${place(room, data.hex)}, ${how}: ${data.burned ? 'уничтожено' : 'уцелело'}.`;
+    }
+    case 'contract': {
+      // В чат попадает только заключённый договор (его видят обе стороны); остальные события — уведомления.
+      if (data.event !== 'accepted') return null;
+      const a = nameOf(room, data.fromId);
+      const b = nameOf(room, data.toId);
+      const { instant, perTurn, debt, penalty } = data.terms;
+      const parts: string[] = [];
+      if (instant) parts.push(`мгновенно: ${a} отдаёт ${list(instant.give)}, ${b} отдаёт ${list(instant.get)}`);
+      if (perTurn) parts.push(`каждый ход (${perTurn.turns}): ${a} платит ${list(perTurn.give)}, ${b} платит ${list(perTurn.get)}`);
+      if (debt) {
+        const [lender, borrower] = debt.lend ? [a, b] : [b, a];
+        parts.push(`долг: ${lender} даёт ${borrower} ${list(debt.amount)}, возврат не позже ${debt.turns}-го хода`);
+      }
+      const fine = penalty > 0 && (perTurn || debt) ? `; штраф за расторжение ${penalty}` : '';
+      return `Договор заключён: ${a} и ${b} — ${parts.join('; ')}${fine}.`;
     }
     case 'unsupplied':
       return `Без снабжения остались и удалены: юнитов — ${data.units}, построек — ${data.buildings}.`;

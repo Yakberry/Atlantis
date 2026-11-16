@@ -1,3 +1,4 @@
+import type { ReportData } from './game';
 import type { z } from 'zod';
 import type { ChatMessage, RoomSnapshot } from './domain';
 import type { GameEvent } from './game';
@@ -29,4 +30,6 @@ export interface ClientToServerEvents {
 export interface ServerToClientEvents {
   'room:updated': (room: RoomSnapshot) => void;
   'chat:message': (message: ChatMessage) => void;
+  /** Структурированное событие игры для уведомлений (тостов): уходит тем же адресатам, что и запись в чат. */
+  'game:report': (data: ReportData) => void;
 }

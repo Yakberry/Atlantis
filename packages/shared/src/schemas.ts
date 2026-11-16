@@ -14,7 +14,7 @@ const lastingSchema = partSchema.extend({ turns: z.number().int().min(1).max(MAX
 const termsSchema = z.object({
   instant: partSchema.optional(),
   perTurn: lastingSchema.optional(),
-  debt: lastingSchema.optional(),
+  debt: z.object({ amount: stockSchema, lend: z.boolean(), turns: z.number().int().min(1).max(MAX_CONTRACT_TURNS) }).optional(),
   penalty: z.number().int().min(0).max(99),
 });
 

@@ -391,12 +391,12 @@ body { overscroll-behavior: none; }
   .turnbar button { flex: 1; }
   .viewport { min-height: 200px; }
   /* Окна торговли и строительства выезжают снизу на всю ширину. */
-  .trade-window, .build-window {
-    top: auto;
+  .trade-window, .build-window, .contracts-window {
+    top: 0;
     right: 0;
     width: 100%;
     min-width: 0;
-    max-height: 90%;
+    max-height: 100%;
     border-top: 1px solid var(--line);
     border-right: 0;
     border-radius: 12px 12px 0 0;
@@ -418,3 +418,32 @@ body { overscroll-behavior: none; }
 .contract .due { margin: 0; color: var(--accent); font-weight: 600; }
 .contract .terminate { display: grid; gap: 0.4rem; padding-top: 0.4rem; border-top: 1px solid var(--line); }
 .trade-body h3 { margin: 0.4rem 0 0; font-size: 0.85rem; font-weight: 600; }
+
+/* ---------- Уведомления (тосты) и подсветка договора ---------- */
+.toast-host { position: absolute; right: 0.6rem; bottom: 0.6rem; z-index: 7; display: grid; gap: 0.4rem; justify-items: end; margin: 0; padding: 0; list-style: none; pointer-events: none; }
+.toast-host li { pointer-events: auto; }
+.toast {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 11rem;
+  max-width: 20rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(11, 42, 51, 0.96);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  color: var(--text);
+  font-weight: 400;
+  text-align: left;
+}
+.toast.clickable { cursor: pointer; border-color: var(--accent); }
+.toast-amounts { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.toast-chip { display: inline-flex; align-items: center; gap: 0.25rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.toast-enter-active, .toast-leave-active { transition: opacity 0.2s ease, transform 0.2s ease; }
+.toast-enter-from, .toast-leave-to { opacity: 0; transform: translateY(8px); }
+.contract.highlighted { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.toggle { display: flex; gap: 0.4rem; }
+.toggle .active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+@media (max-width: 720px), (pointer: coarse) and (max-height: 520px) {
+  .toast-host { top: 0.5rem; right: 0.5rem; bottom: auto; }
+}

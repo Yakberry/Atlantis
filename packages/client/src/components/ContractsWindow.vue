@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { emptyStock, RESOURCES, type ContractPart, type ContractView, type Stock } from '@atlantis/shared';
-import { computed, ref } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { RESOURCE_LABELS } from '../board/palette';
 import ResourcePicker from './ResourcePicker.vue';
 
@@ -15,6 +15,8 @@ const props = defineProps<{
   names: Record<string, string>;
   stock: Stock;
   tradePhase: boolean;
+  /** Договор, на который указало уведомление. */
+  highlight?: string | null;
 }>();
 const emit = defineEmits<{
   'update:tab': [tab: ContractsTab];
@@ -56,15 +58,25 @@ function lines(c: ContractView): string[] {
   if (instant) result.push(`Мгновенно: вы отдаёте ${out(instant)}, получаете ${inn(instant)}.`);
   if (perTurn) result.push(`Каждый ход (${perTurn.turns}): вы платите ${out(perTurn)}, получаете ${inn(perTurn)}.`);
   if (debt) {
+    const iLend = debt.lend === iAmFrom; // кредитор — предложивший, если он даёт в долг, иначе получатель
     result.push(
-      iAmFrom
-        ? `Долг: вы отдаёте ${list(debt.give)} сразу, вам вернут ${list(debt.get)} не позже ${debt.turns}-го хода.`
-        : `Долг: вы получаете ${list(debt.give)} сразу и вернёте ${list(debt.get)} не позже ${debt.turns}-го хода.`,
+      iLend
+        ? `Долг: вы даёте ${list(debt.amount)} в долг, вам вернут ту же сумму не позже ${debt.turns}-го хода.`
+        : `Долг: вы берёте ${list(debt.amount)} и вернёте её не позже ${debt.turns}-го хода.`,
     );
   }
   if (penalty > 0 && (perTurn || debt)) result.push(`Штраф за расторжение: ${penalty}.`);
   return result;
 }
+
+watch(
+  () => props.highlight,
+  async (id) => {
+    if (!id) return;
+    await nextTick();
+    document.getElementById(`contract-${id}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  },
+);
 
 const STATUS: Record<string, string> = { completed: 'Выполнен', declined: 'Отклонён', expired: 'Не принят до конца хода', terminated: 'Расторгнут' };
 const outcome = (c: ContractView) =>
@@ -107,7 +119,7 @@ const confirmTerminate = (c: ContractView) => {
 
         <template v-if="tab === 'offers'">
           <p v-if="incoming.length === 0" class="muted">Предложений договоров в этом ходу нет.</p>
-          <article v-for="c in incoming" :key="c.id" class="contract">
+          <article v-for="c in incoming" :key="c.id" :class="['contract', { highlighted: c.id === highlight }]" :id="`contract-${c.id}`">
             <strong>Предлагает {{ name(c.fromId) }}</strong>
             <ul class="terms"><li v-for="line in lines(c)" :key="line">{{ line }}</li></ul>
             <div class="row">
@@ -117,7 +129,7 @@ const confirmTerminate = (c: ContractView) => {
           </article>
           <template v-if="sent.length > 0">
             <h3 class="muted">Вы предложили</h3>
-            <article v-for="c in sent" :key="c.id" class="contract">
+            <article v-for="c in sent" :key="c.id" :class="['contract', { highlighted: c.id === highlight }]" :id="`contract-${c.id}`">
               <strong>{{ name(c.toId) }}: ждём ответа</strong>
               <ul class="terms"><li v-for="line in lines(c)" :key="line">{{ line }}</li></ul>
               <small v-if="total(c.reserved) > 0" class="muted">Зарезервировано: {{ list(c.reserved) }}</small>
@@ -127,7 +139,7 @@ const confirmTerminate = (c: ContractView) => {
 
         <template v-else-if="tab === 'active'">
           <p v-if="active.length === 0" class="muted">Действующих договоров нет.</p>
-          <article v-for="c in active" :key="c.id" class="contract">
+          <article v-for="c in active" :key="c.id" :class="['contract', { highlighted: c.id === highlight }]" :id="`contract-${c.id}`">
             <strong>{{ partner(c) }} <small class="muted">ход {{ c.k }} из {{ span(c) }}</small></strong>
             <ul class="terms"><li v-for="line in lines(c)" :key="line">{{ line }}</li></ul>
             <p v-if="c.mandatory" class="due">Платёж обязателен до конца хода: {{ list(c.owe) }}.</p>
@@ -150,7 +162,7 @@ const confirmTerminate = (c: ContractView) => {
 
         <template v-else>
           <p v-if="history.length === 0" class="muted">История договоров пока пуста.</p>
-          <article v-for="c in history" :key="c.id" class="contract">
+          <article v-for="c in history" :key="c.id" :class="['contract', { highlighted: c.id === highlight }]" :id="`contract-${c.id}`">
             <strong>{{ partner(c) }} <small class="muted">· {{ outcome(c) }}</small></strong>
             <ul class="terms"><li v-for="line in lines(c)" :key="line">{{ line }}</li></ul>
           </article>

@@ -106,7 +106,8 @@ type Tile = {
 
 const viewport = ref<HTMLElement | null>(null);
 const bounds = computed(() => boardBounds(props.game.hexes));
-const { viewBox, fit, zoomBy, wasDragged, handlers } = usePanZoom(viewport, bounds);
+const { viewBox, fit, zoomBy, centerOn, wasDragged, handlers } = usePanZoom(viewport, bounds);
+defineExpose({ centerOn: (cell: Coord) => centerOn(hexCenter(cell)) }); // уведомление может подвести карту к локации
 
 const selectedId = ref<string | null>(null);
 /** Строительство: выбранная локация и режим выбора конца дороги. */

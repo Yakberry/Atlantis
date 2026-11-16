@@ -60,11 +60,14 @@ async function emitMessage(io: AppServer, roomId: string, message: ChatMessage, 
   }
 }
 
-/** Отчёты о событиях игры (бои, потери) уходят в чат тем, кто о них вправе знать. */
+/** Отчёты о событиях игры уходят тем, кто о них вправе знать: текстом в чат (если он есть) и структурой для уведомлений. */
 async function publishReports(io: AppServer, room: RoomState, reports: Report[]): Promise<void> {
   for (const { audience, data } of reports) {
-    const message = await chat.announce(room.id, formatReport(data, room), audience);
-    await emitMessage(io, room.id, message, audience);
+    const text = formatReport(data, room);
+    if (text !== null) await emitMessage(io, room.id, await chat.announce(room.id, text, audience), audience);
+    for (const socket of await io.in(room.id).fetchSockets()) {
+      if (audience.includes(socket.data.player.id)) socket.emit('game:report', data); // структурированно, для тостов
+    }
   }
 }
 

@@ -69,6 +69,13 @@ export function usePanZoom(viewport: Ref<HTMLElement | null>, bounds: Ref<Bounds
     zoomAt({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }, factor);
   }
 
+  /** Показать точку карты в центре (чуть приблизив, если карта мелкая). */
+  function centerOn(point: Point): void {
+    scale.value = clampScale(Math.max(scale.value, fitScale.value * 1.5));
+    center.value = point;
+    fitted = false;
+  }
+
   function panBy(dx: number, dy: number): void {
     center.value = { x: center.value.x - dx / scale.value, y: center.value.y - dy / scale.value };
     fitted = false;
@@ -156,6 +163,7 @@ export function usePanZoom(viewport: Ref<HTMLElement | null>, bounds: Ref<Bounds
     viewBox,
     fit,
     zoomBy,
+    centerOn,
     /** Был ли жест перетаскиванием: тогда последующий клик не должен выбирать юнитов. */
     wasDragged: () => dragged,
     handlers: { onPointerDown, onPointerMove, onPointerEnd, onWheel },

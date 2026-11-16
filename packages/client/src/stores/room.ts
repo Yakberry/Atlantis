@@ -1,3 +1,4 @@
+import type { ReportData } from '@atlantis/shared';
 import { MIN_PLAYERS, type ChatMessage, type GameAction, type RoomSettings, type RoomSnapshot } from '@atlantis/shared';
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
@@ -8,6 +9,8 @@ export const useRoomStore = defineStore('room', () => {
   const sessionStore = useSessionStore();
   const room = ref<RoomSnapshot | null>(null);
   const messages = ref<ChatMessage[]>([]);
+  /** События игры, ещё не показанные уведомлениями. */
+  const reports = ref<ReportData[]>([]);
   let socket: AppSocket | null = null;
 
   const isHost = computed(() => room.value?.hostId === sessionStore.player?.id);
@@ -28,6 +31,7 @@ export const useRoomStore = defineStore('room', () => {
     });
     s.on('room:updated', (snapshot) => (room.value = snapshot));
     s.on('chat:message', (message) => messages.value.push(message));
+    s.on('game:report', (data) => reports.value.push(data));
     return (socket = s);
   }
 
@@ -39,6 +43,7 @@ export const useRoomStore = defineStore('room', () => {
   function reset(): void {
     room.value = null;
     messages.value = [];
+    reports.value = [];
   }
 
   async function createRoom(): Promise<string> {
@@ -76,7 +81,7 @@ export const useRoomStore = defineStore('room', () => {
     unwrap(await connect().emitWithAck('chat:send', { roomId: currentRoomId(), text }));
 
   return {
-    room, messages, isHost, isReady, canStart,
+    room, messages, reports, isHost, isReady, canStart,
     createRoom, join, leave, detach, configure, startGame, sendAction, sendMessage,
   };
 });

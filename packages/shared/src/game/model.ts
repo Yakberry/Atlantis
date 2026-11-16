@@ -243,13 +243,14 @@ export type ContractPart = { give: Stock; get: Stock };
  * Условия договора между игроками; любая часть может отсутствовать.
  * - `instant`: мгновенный обмен при принятии;
  * - `perTurn`: `turns` ходов подряд (со следующего хода) каждая сторона платит свою часть кнопкой «Выплатить»;
- * - `debt`: предложивший отдаёт `give` сразу, а получатель возвращает `get` не позже последнего хода из `turns`;
+ * - `debt`: заём без процентов: `lend` — предложивший даёт в долг (иначе берёт); кредитор отдаёт `amount` сразу, заёмщик возвращает
+ *   ту же сумму не позже последнего хода из `turns` (можно раньше);
  * - `penalty`: сколько ресурсов отдаёт сторона, расторгающая действующий договор (или все, если их меньше).
  */
 export type ContractTerms = {
   instant?: ContractPart;
   perTurn?: ContractPart & { turns: number };
-  debt?: ContractPart & { turns: number };
+  debt?: { amount: Stock; lend: boolean; turns: number };
   penalty: number;
 };
 export type Contract = {
@@ -407,7 +408,29 @@ export type ReportData =
   /** Лог боевых потерь: у каждой стороны — список потерянных юнитов; `stopped` — сколько юнитов не прошли стены. */
   | { type: 'battle'; hex: Coord; losses: Record<string, UnitKind[]>; stopped: Record<string, number>; tower: boolean }
   /** Попытка сжечь незащищённую колонию. */
-  | { type: 'burn'; hex: Coord; ownerId: string; kind: UnitKind; rolls: number[]; difficulty: number; burned: boolean; automatic: boolean }
+  | {
+      type: 'burn';
+      hex: Coord;
+      ownerId: string;
+      kind: UnitKind;
+      rolls: number[];
+      difficulty: number;
+      burned: boolean;
+      automatic: boolean;
+      /** Игроки, чьи юниты пытались поджечь. */
+      attackerIds: string[];
+    }
+  /** События договоров: уведомления (тосты) и запись о заключённом договоре в чат. `paid` — сколько отдал `actorId`. */
+  | {
+      type: 'contract';
+      event: 'offered' | 'accepted' | 'declined' | 'terminated' | 'paid';
+      contractId: string;
+      fromId: string;
+      toId: string;
+      actorId: string;
+      terms: ContractTerms;
+      paid: Stock;
+    }
   | { type: 'unsupplied'; playerId: string; units: number; buildings: number }
   | { type: 'supply'; playerId: string; spent: Stock; left: Stock };
 

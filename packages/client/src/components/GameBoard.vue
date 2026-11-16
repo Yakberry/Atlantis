@@ -2,11 +2,14 @@
 import { isValidDrop, RESOURCES, supplyNeeds, type ContractTerms, type Resource, type Stock, type BuildingType, type Coord, type GameEvent, type ManeuverStage, type Phase } from '@atlantis/shared';
 import { computed, ref, watch } from 'vue';
 import { RESOURCE_LABELS } from '../board/palette';
+import { toastFromReport } from '../board/toasts';
 import { POPUP_MS, type Popup } from '../board/popups';
 import { useAction } from '../composables/useAction';
 import { useRoomStore } from '../stores/room';
 import { useSessionStore } from '../stores/session';
+import { useToastStore, type ToastAction } from '../stores/toasts';
 import { useUiStore } from '../stores/ui';
+import ToastHost from './ToastHost.vue';
 import ContractsWindow from './ContractsWindow.vue';
 import HexBoard from './HexBoard.vue';
 import PhaseBar from './PhaseBar.vue';
@@ -15,6 +18,8 @@ import TradeWindow, { type TradeTab } from './TradeWindow.vue';
 const store = useRoomStore();
 const session = useSessionStore();
 const ui = useUiStore();
+const toasts = useToastStore();
+const boardRef = ref<InstanceType<typeof HexBoard> | null>(null);
 const { error, run } = useAction();
 
 const game = computed(() => store.room?.game);
@@ -37,6 +42,35 @@ function showPopups(events: GameEvent[]) {
     popups.value.push(popup);
     setTimeout(() => (popups.value = popups.value.filter((p) => p.id !== popup.id)), POPUP_MS);
   }
+  const gained: Partial<Record<Resource, number>> = {};
+  for (const event of events) if (event.type === 'harvested') gained[event.resource] = (gained[event.resource] ?? 0) + event.amount;
+  if (Object.keys(gained).length > 0) toasts.push({ key: 'harvest', title: 'Добыча', amounts: gained });
+}
+
+// ---------- уведомления ----------
+const hexName = (cell: Coord) => {
+  const hex = game.value?.hexes.find((h) => h.q === cell.q && h.r === cell.r);
+  return hex?.visible ? hex.name : null;
+};
+watch(
+  () => store.reports.length,
+  () => {
+    for (const data of store.reports.splice(0)) {
+      const toast = toastFromReport(data, { me: me.value, names: names.value, hexName });
+      if (toast) toasts.push(toast);
+    }
+  },
+);
+watch(
+  () => game.value?.turn,
+  (now, before) => {
+    if (now !== undefined && before !== undefined && now > before) toasts.push({ key: 'turn', title: `Ход ${now}`, amounts: {} });
+  },
+);
+/** Клик по уведомлению: открыть и подсветить договор или подвести карту к локации. */
+function onToastAction(action: ToastAction) {
+  if (action.type === 'hex') boardRef.value?.centerOn(action.hex);
+  else ui.openContract(action.contractId, action.tab);
 }
 
 // ---------- снабжение: выбор, кто останется без него ----------
@@ -162,6 +196,7 @@ const confirmDrop = () =>
 
     <div class="map-stage">
       <HexBoard
+        ref="boardRef"
         :game="game"
         :viewer-id="me"
         :popups="popups"
@@ -191,12 +226,14 @@ const confirmDrop = () =>
         :names="names"
         :stock="game.stock"
         :trade-phase="game.phase === 'trade'"
+        :highlight="ui.highlight"
         @close="ui.contractsOpen = false"
         @accept="contractAction('contract_accept', $event)"
         @decline="contractAction('contract_decline', $event)"
         @pay="contractAction('contract_pay', $event)"
         @terminate="terminateContract"
       />
+      <ToastHost @action="onToastAction" />
     </div>
 
     <div class="turnbar">

@@ -4,6 +4,8 @@ import {
   MAX_CONTRACT_TURNS,
   type Applied,
   type Contract,
+  type Report,
+  type ReportData,
   type ContractTerms,
   type ContractView,
   type GameAction,
@@ -48,8 +50,8 @@ export function owed(state: GameState, c: Contract, playerId: string) {
         perTurn = true;
       }
     }
-    if (d && mine === 'to' && k <= d.turns && !c.debtRepaid && sum(d.get) > 0) {
-      cost = mix(cost, d.get, 1);
+    if (d && mine === (d.lend ? 'to' : 'from') && k <= d.turns && !c.debtRepaid && sum(d.amount) > 0) {
+      cost = mix(cost, d.amount, 1); // возвращается та же сумма
       debt = true;
     }
   }
@@ -83,13 +85,13 @@ export function contractViews(state: GameState, viewerId: string): ContractView[
 
 function offerContract(state: GameState, playerId: string, to: string, terms: ContractTerms): Result<Applied> {
   if (to === playerId || !state.playerOrder.includes(to)) return fail('Выберите другого игрока');
-  const parts = [terms.instant, terms.perTurn, terms.debt];
-  if (parts.every((part) => !part)) return fail('Раскройте и заполните хотя бы одно условие договора');
-  for (const part of parts) {
+  if (!terms.instant && !terms.perTurn && !terms.debt) return fail('Раскройте и заполните хотя бы одно условие договора');
+  for (const part of [terms.instant, terms.perTurn]) {
     if (part && (!sound(part.give) || !sound(part.get) || sum(part.give) + sum(part.get) === 0)) {
       return fail('В каждом условии должны быть ресурсы');
     }
   }
+  if (terms.debt && (!sound(terms.debt.amount) || sum(terms.debt.amount) === 0)) return fail('В долге должны быть ресурсы');
   for (const part of [terms.perTurn, terms.debt]) {
     if (part && !(Number.isInteger(part.turns) && part.turns >= 1 && part.turns <= MAX_CONTRACT_TURNS)) {
       return fail(`Срок договора — от 1 до ${MAX_CONTRACT_TURNS} ходов`);
@@ -136,9 +138,16 @@ function acceptContract(state: GameState, playerId: string, id: string): Result<
     from = mix(from, instant.get, 1);
   }
   if (debt) {
-    if (!fits(from, debt.give)) return fail('У предложившего не хватает ресурсов для займа');
-    from = mix(from, debt.give, -1);
-    to = mix(to, debt.give, 1);
+    // Кредитор отдаёт сумму заёмщику сразу; возвращается та же сумма.
+    if (debt.lend) {
+      if (!fits(from, debt.amount)) return fail('У предложившего не хватает ресурсов для займа');
+      from = mix(from, debt.amount, -1);
+      to = mix(to, debt.amount, 1);
+    } else {
+      if (!fits(to, debt.amount)) return fail('Вам не хватает ресурсов, чтобы дать в долг');
+      to = mix(to, debt.amount, -1);
+      from = mix(from, debt.amount, 1);
+    }
   }
   const lasting = c.terms.perTurn !== undefined || debt !== undefined;
   const accepted: Contract = {
@@ -204,7 +213,7 @@ type ContractAction = Extract<
   { type: 'contract_offer' | 'contract_accept' | 'contract_decline' | 'contract_pay' | 'contract_terminate' }
 >;
 
-export function contractAction(state: GameState, playerId: string, action: ContractAction): Result<Applied> {
+function dispatch(state: GameState, playerId: string, action: ContractAction): Result<Applied> {
   switch (action.type) {
     case 'contract_offer':
       return offerContract(state, playerId, action.to, action.terms);
@@ -246,4 +255,31 @@ export function leaveContracts(state: GameState, playerId: string): { stock: Rec
     return { ...c, status: 'terminated', terminatedBy: playerId, endedTurn: state.turn, reserved: emptyStock() };
   });
   return { stock, contracts };
+}
+
+const EVENTS: Record<ContractAction['type'], Extract<ReportData, { type: 'contract' }>['event']> = {
+  contract_offer: 'offered',
+  contract_accept: 'accepted',
+  contract_decline: 'declined',
+  contract_pay: 'paid',
+  contract_terminate: 'terminated',
+};
+
+/** Событие договора для уведомлений: кому о нём знать и сколько отдал действовавший игрок. */
+function reportFor(before: GameState, after: GameState, actorId: string, action: ContractAction): Report | null {
+  const id = action.type === 'contract_offer' ? `contract-${before.nextId}` : action.contractId;
+  const c = after.contracts.find((x) => x.id === id);
+  if (!c) return null;
+  const event = EVENTS[action.type];
+  const audience =
+    event === 'offered' ? [c.toId] : event === 'accepted' ? [c.fromId, c.toId] : event === 'declined' ? [c.fromId] : [other(c, actorId)];
+  const paid = mix(stockOf(before, actorId), stockOf(after, actorId), -1);
+  return { audience, data: { type: 'contract', event, contractId: c.id, fromId: c.fromId, toId: c.toId, actorId, terms: c.terms, paid } };
+}
+
+export function contractAction(state: GameState, playerId: string, action: ContractAction): Result<Applied> {
+  const result = dispatch(state, playerId, action);
+  if (!result.ok) return result;
+  const report = reportFor(state, result.value.state, playerId, action);
+  return report ? ok(result.value.state, result.value.events, [...result.value.reports, report]) : result;
 }

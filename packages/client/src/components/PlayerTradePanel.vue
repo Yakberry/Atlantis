@@ -12,28 +12,31 @@ const blank = (): Part => ({ open: false, give: emptyStock(), get: emptyStock(),
 const SECTIONS = [
   { key: 'instant', title: 'Мгновенный обмен', hint: 'Обмен происходит сразу после принятия. Ваши ресурсы резервируются до ответа игрока.', turns: false },
   { key: 'perTurn', title: 'Каждый ход', hint: 'Со следующего хода каждая сторона сама платит свою часть кнопкой «Выплатить».', turns: true },
-  { key: 'debt', title: 'Долг', hint: 'Вы отдаёте сразу, а вам возвращают не позже последнего хода срока.', turns: true },
 ] as const;
 type Key = (typeof SECTIONS)[number]['key'];
 
-const form = ref<Record<Key, Part>>({ instant: blank(), perTurn: blank(), debt: blank() });
+const form = ref<Record<Key, Part>>({ instant: blank(), perTurn: blank() });
+/** Долг — заём без процентов: одна сумма, возвращается та же. `lend` — вы даёте в долг (иначе берёте). */
+const debt = ref({ open: false, amount: emptyStock(), lend: false, turns: 3 });
 const target = ref('');
 const penalty = ref(0);
 
 const count = (stock: Stock) => RESOURCES.reduce((sum, resource) => sum + stock[resource], 0);
 const filled = (part: Part) => part.open && count(part.give) + count(part.get) > 0;
-const lasting = computed(() => form.value.perTurn.open || form.value.debt.open);
-const canSend = computed(() => target.value !== '' && SECTIONS.some((section) => filled(form.value[section.key])));
-const turnsOf = (part: Part) => Math.min(MAX_CONTRACT_TURNS, Math.max(1, Math.floor(part.turns) || 1));
+const debtFilled = computed(() => debt.value.open && count(debt.value.amount) > 0);
+const lasting = computed(() => form.value.perTurn.open || debt.value.open);
+const canSend = computed(() => target.value !== '' && (SECTIONS.some((s) => filled(form.value[s.key])) || debtFilled.value));
+const turnsOf = (turns: number) => Math.min(MAX_CONTRACT_TURNS, Math.max(1, Math.floor(turns) || 1));
 
 function send() {
-  const { instant, perTurn, debt } = form.value;
+  const { instant, perTurn } = form.value;
   const terms: ContractTerms = { penalty: lasting.value ? Math.max(0, Math.floor(penalty.value) || 0) : 0 };
   if (filled(instant)) terms.instant = { give: instant.give, get: instant.get };
-  if (filled(perTurn)) terms.perTurn = { give: perTurn.give, get: perTurn.get, turns: turnsOf(perTurn) };
-  if (filled(debt)) terms.debt = { give: debt.give, get: debt.get, turns: turnsOf(debt) };
+  if (filled(perTurn)) terms.perTurn = { give: perTurn.give, get: perTurn.get, turns: turnsOf(perTurn.turns) };
+  if (debtFilled.value) terms.debt = { amount: debt.value.amount, lend: debt.value.lend, turns: turnsOf(debt.value.turns) };
   emit('offer', target.value, terms);
-  form.value = { instant: blank(), perTurn: blank(), debt: blank() };
+  form.value = { instant: blank(), perTurn: blank() };
+  debt.value = { open: false, amount: emptyStock(), lend: false, turns: 3 };
   penalty.value = 0;
 }
 </script>
@@ -69,6 +72,24 @@ function send() {
           <label v-if="section.turns" class="field">
             Ходов (1–{{ MAX_CONTRACT_TURNS }})
             <input v-model.number="form[section.key].turns" type="number" min="1" :max="MAX_CONTRACT_TURNS" />
+          </label>
+        </div>
+      </div>
+
+      <div class="contract-part">
+        <button type="button" class="secondary part-head" :aria-expanded="debt.open" @click="debt.open = !debt.open">
+          {{ debt.open ? '▾' : '▸' }} Долг
+        </button>
+        <div v-if="debt.open" class="part-body">
+          <p class="muted">Заём без процентов: возвращается та же сумма не позже последнего хода срока.</p>
+          <div class="toggle" role="group" aria-label="Направление долга">
+            <button type="button" :class="['secondary', { active: !debt.lend }]" @click="debt.lend = false">Взять в долг</button>
+            <button type="button" :class="['secondary', { active: debt.lend }]" @click="debt.lend = true">Дать в долг</button>
+          </div>
+          <ResourcePicker v-model="debt.amount" :limit="debt.lend ? stock : undefined" />
+          <label class="field">
+            Ходов (1–{{ MAX_CONTRACT_TURNS }})
+            <input v-model.number="debt.turns" type="number" min="1" :max="MAX_CONTRACT_TURNS" />
           </label>
         </div>
       </div>

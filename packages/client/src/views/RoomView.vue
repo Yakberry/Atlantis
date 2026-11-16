@@ -41,7 +41,7 @@ const toggleChat = () => {
   }
 };
 const chatLabel = computed(() =>
-  isMobile.value ? (chatOpen.value ? 'Закрыть чат' : 'Чат') : settings.chatHidden ? 'Показать чат' : 'Скрыть чат',
+  isMobile.value ? 'Чат' : settings.chatHidden ? 'Показать чат' : 'Скрыть чат',
 );
 
 async function leaveRoom() {
