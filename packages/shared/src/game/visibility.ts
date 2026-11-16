@@ -1,6 +1,7 @@
 import { distance, sameCell, type Coord } from './hex';
 import { buildSites } from './build';
 import { canStillMove, legalSteps } from './maneuver';
+import { contractAlerts, contractViews } from './contracts';
 import { fleetSight } from './seas';
 import { currentPrice, effectivePrice } from './trade';
 import { chainsOf } from './harvest';
@@ -53,7 +54,7 @@ function tradeView(state: GameState, viewerId: string): NonNullable<GameView['tr
  * - Чужие юниты видны там, где их показали при последнем раскрытии манёвра; чужая усталость скрыта.
  */
 export function viewFor(state: GameState, viewerId: string): GameView {
-  const { hexes, units, stock, shownStock, roads, market, nextId: _nextId, ...rest } = state;
+  const { hexes, units, stock, shownStock, roads, market, contracts: _contracts, nextId: _nextId, ...rest } = state;
   const eyes = units.filter((unit) => unit.ownerId === viewerId);
   const shownRoads = roads.filter((road) => !road.fresh || road.ownerId === viewerId);
 
@@ -71,6 +72,8 @@ export function viewFor(state: GameState, viewerId: string): GameView {
     supply: supplyNeeds(eyes),
     roads: shownRoads.filter((road) => canSee(state, viewerId, road.a) || canSee(state, viewerId, road.b)),
     chains: chainsOf(state, viewerId, shownRoads),
+    contracts: contractViews(state, viewerId),
+    contractAlerts: contractAlerts(state, viewerId),
     trade: state.phase === 'trade' ? tradeView(state, viewerId) : null,
     moves:
       state.phase === 'maneuver'

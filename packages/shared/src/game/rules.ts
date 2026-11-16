@@ -22,6 +22,7 @@ import { settle } from './phases';
 import { pick, shuffle, type Rng } from './random';
 import { fail, ok } from './result';
 import { dropUnsupplied } from './supply';
+import { contractAction, hasDue, leaveContracts } from './contracts';
 import { trade } from './trade';
 
 export function createGame(playerIds: string[], settings: GameSettings, rng: Rng = Math.random): GameState {
@@ -79,6 +80,7 @@ export function createGame(playerIds: string[], settings: GameSettings, rng: Rng
     units,
     roads: [],
     market: { prices: [], steps: {} },
+    contracts: [],
     nextId: serial + 1,
   };
   return settle(state, rng).state;
@@ -124,12 +126,23 @@ function perform(state: GameState, playerId: string, action: GameAction, rng: Rn
       if (state.phase !== 'trade') return fail('Торговать можно только на фазе торговли');
       return trade(state, playerId, action.give, action.get);
 
+    case 'contract_offer':
+    case 'contract_accept':
+    case 'contract_decline':
+    case 'contract_pay':
+    case 'contract_terminate':
+      if (state.phase !== 'trade') return fail('Договоры заключаются на фазе торговли');
+      return contractAction(state, playerId, action);
+
     case 'end_phase':
       switch (state.phase) {
         case 'maneuver':
         case 'battle': // подтверждение начала боёв
         case 'build':
-        case 'trade': // на торговле это отказ от текущей цены
+          return ok({ ...state, ready: [...state.ready, playerId] });
+        case 'trade':
+          // Закончить ход можно, лишь выплатив или расторгнув договоры с обязательным платежом в этом ходу.
+          if (hasDue(state, playerId)) return fail('Сначала выплатите или расторгните договоры, по которым платёж обязателен в этом ходу');
           return ok({ ...state, ready: [...state.ready, playerId] });
         case 'harvest': {
           const { state: harvested, events } = harvestRemaining(state, playerId, rng);
@@ -152,11 +165,13 @@ export function removePlayer(
   const without = <T>(record: Record<string, T>) =>
     Object.fromEntries(Object.entries(record).filter(([id]) => id !== playerId));
   const playerOrder = state.playerOrder.filter((id) => id !== playerId);
+  const leaving = leaveContracts(state, playerId);
   const next: GameState = {
     ...state,
     playerOrder,
     ready: state.ready.filter((id) => id !== playerId),
-    stock: without(state.stock),
+    stock: leaving.stock,
+    contracts: leaving.contracts,
     shownStock: without(state.shownStock),
     units: state.units.filter((unit) => unit.ownerId !== playerId),
   };

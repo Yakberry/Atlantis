@@ -233,6 +233,54 @@ export type Unit = Coord & {
  */
 export type Market = { prices: number[]; steps: Record<string, number> };
 
+/** Сколько ходов может длиться договор «каждый ход» или «долг». */
+export const MAX_CONTRACT_TURNS = 10;
+
+export type ContractStatus = 'offered' | 'active' | 'completed' | 'declined' | 'expired' | 'terminated';
+/** Часть договора: сколько отдаёт и сколько получает предложивший (`fromId`). */
+export type ContractPart = { give: Stock; get: Stock };
+/**
+ * Условия договора между игроками; любая часть может отсутствовать.
+ * - `instant`: мгновенный обмен при принятии;
+ * - `perTurn`: `turns` ходов подряд (со следующего хода) каждая сторона платит свою часть кнопкой «Выплатить»;
+ * - `debt`: предложивший отдаёт `give` сразу, а получатель возвращает `get` не позже последнего хода из `turns`;
+ * - `penalty`: сколько ресурсов отдаёт сторона, расторгающая действующий договор (или все, если их меньше).
+ */
+export type ContractTerms = {
+  instant?: ContractPart;
+  perTurn?: ContractPart & { turns: number };
+  debt?: ContractPart & { turns: number };
+  penalty: number;
+};
+export type Contract = {
+  id: string;
+  fromId: string;
+  toId: string;
+  terms: ContractTerms;
+  status: ContractStatus;
+  offeredTurn: number;
+  /** Ход принятия; платежи по договору идут со следующего хода. */
+  startTurn: number | null;
+  endedTurn: number | null;
+  /** Зарезервированное под мгновенный обмен, пока предложение не принято и не отклонено. */
+  reserved: Stock;
+  /** Платёж «каждый ход» этого хода уже внесён стороной. */
+  paid: { from: boolean; to: boolean };
+  debtRepaid: boolean;
+  terminatedBy: string | null;
+};
+/** Договор глазами участника, с готовыми расчётами сервера. */
+export type ContractView = Contract & {
+  /** Сколько ходов прошло с принятия. */
+  k: number;
+  /** Что вы должны заплатить сейчас. */
+  owe: Stock;
+  payable: boolean;
+  canPay: boolean;
+  /** Платёж обязателен до конца хода. */
+  mandatory: boolean;
+};
+
 /** Дорога между двумя соседними локациями. Общая: пользоваться ею может любой игрок. */
 export type Road = {
   id: string;
@@ -279,6 +327,8 @@ export type GameState = {
   roads: Road[];
   /** Предложения купцов этого хода (имеют смысл в фазе торговли). */
   market: Market;
+  /** Договоры между игроками. */
+  contracts: Contract[];
   /** Счётчик для идентификаторов новых юнитов, построек и дорог. */
   nextId: number;
 };
@@ -303,7 +353,7 @@ export type HexView =
     });
 
 /** Состояние партии глазами одного игрока: без чужих тайн. */
-export type GameView = Omit<GameState, 'hexes' | 'units' | 'stock' | 'shownStock' | 'roads' | 'market' | 'nextId'> & {
+export type GameView = Omit<GameState, 'hexes' | 'units' | 'stock' | 'shownStock' | 'roads' | 'market' | 'contracts' | 'nextId'> & {
   hexes: HexView[];
   /** Ваш запас (актуальный). */
   stock: Stock;
@@ -324,6 +374,10 @@ export type GameView = Omit<GameState, 'hexes' | 'units' | 'stock' | 'shownStock
   trade: { accepted: number[]; price: number | null; offers: number } | null;
   /** Куда может пойти каждый ваш юнит прямо сейчас (в манёвре); считает сервер, клиент только подсвечивает. */
   moves: Record<string, Coord[]>;
+  /** Ваши договоры (чужие не видны). */
+  contracts: ContractView[];
+  /** Сколько дел по договорам ждёт вас: входящие предложения и обязательные платежи. */
+  contractAlerts: number;
 };
 
 export type GameAction =
@@ -335,6 +389,14 @@ export type GameAction =
   | { type: 'build'; building: BuildingType; at: Coord; to?: Coord }
   /** Принять текущее предложение купцов: отдать ресурсы `give` (в сумме ровно по цене) и получить 1 ресурс `get`. */
   | { type: 'trade'; give: Stock; get: Resource }
+  /** Предложить договор игроку `to` (фаза торговли). */
+  | { type: 'contract_offer'; to: string; terms: ContractTerms }
+  | { type: 'contract_accept'; contractId: string }
+  | { type: 'contract_decline'; contractId: string }
+  /** Внести обязательные платежи по договору за этот ход. */
+  | { type: 'contract_pay'; contractId: string }
+  /** Расторгнуть договор, отдав штраф `give`. */
+  | { type: 'contract_terminate'; contractId: string; give: Stock }
   /** Завершить свою часть текущей фазы (этап манёвра, строительство, добычу); на торговле — отказаться от цены. */
   | { type: 'end_phase' };
 

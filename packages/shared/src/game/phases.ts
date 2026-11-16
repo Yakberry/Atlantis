@@ -5,6 +5,7 @@ import { canStillMove, syncManeuver } from './maneuver';
 import { emptyStock, MANEUVER_STAGES, WIN_TURN, type GameState, type Report, type Stock } from './model';
 import type { Rng } from './random';
 import { covers, pay, supplyNeeds, supplyReport } from './supply';
+import { closeTradePhase, hasDue, hasIncoming, resetPayments } from './contracts';
 import { canTrade, rollPrices } from './trade';
 
 /** Предохранитель: за одно действие не может пройти больше шагов, чем сыграть за партию. */
@@ -48,7 +49,13 @@ function hasWork(state: GameState, playerId: string): boolean {
     case 'battle':
       return hasPendingBattle(state); // подтверждать нужно, только если бои предстоят
     case 'trade':
-      return canTrade(state, playerId);
+      // С игроками можно торговать, пока есть ресурсы: фаза не пропускается, каждый сам завершает ход.
+      return (
+        canTrade(state, playerId) ||
+        hasDue(state, playerId) ||
+        hasIncoming(state, playerId) ||
+        (state.playerOrder.length > 1 && Object.values(state.stock[playerId] ?? {}).some((amount) => amount > 0))
+      );
     case 'supply':
       return true; // кому хватило ресурсов, тот готов с начала фазы; остальные должны выбрать сами
   }
@@ -81,11 +88,12 @@ function advance(state: GameState, rng: Rng): { state: GameState; reports: Repor
       // Затем — торговля с купцами: цены общие, бросаются в начале фазы.
       const units = state.units.map((unit) => ({ ...unit, tired: false, blocked: false }));
       const market = { prices: rollPrices(rng), steps: {} };
-      return { state: reveal({ ...state, units, market, phase: 'trade', ready: [] }), reports: [] };
+      return { state: reveal({ ...state, units, market, contracts: resetPayments(state.contracts), phase: 'trade', ready: [] }), reports: [] };
     }
     case 'trade': {
       // Конец хода: начинается новый.
-      const next = { ...state, phase: 'maneuver' as const, stage: 'fast' as const, ready: [], turn: state.turn + 1 };
+      const closed = closeTradePhase(state); // предложения сгорают, договоры отработавшего срока завершаются
+      const next = { ...closed, phase: 'maneuver' as const, stage: 'fast' as const, ready: [], turn: state.turn + 1 };
       return { state: reveal(checkTurnLimit(next)), reports: [] };
     }
   }

@@ -231,7 +231,8 @@ button.secondary { background: transparent; border-color: var(--line); color: va
 
 /* Окно выдвигается слева поверх трети карты: лежит внутри .map-stage, поэтому карту не двигает и нижние кнопки не закрывает. */
 .trade-window,
-.build-window {
+.build-window,
+.contracts-window {
   position: absolute;
   top: 0;
   bottom: 0;
@@ -239,7 +240,7 @@ button.secondary { background: transparent; border-color: var(--line); color: va
   z-index: 6;
   display: flex;
   flex-direction: column;
-  width: 40%;
+  width: 31%;
   min-width: 19rem;
   overflow: hidden;
   border-right: 1px solid var(--line);
@@ -377,7 +378,7 @@ body { overscroll-behavior: none; }
   .resource { flex: none; padding: 0.1rem 0.6rem 0.1rem 0.4rem; font-size: 0.85rem; }
   .phases { gap: 0.2rem 0.6rem; font-size: 0.85rem; }
   .phases li:not(.current):not(.turn) { display: none; }
-  .turnbar { gap: 0.35rem; display: flex; align-content: baseline;}
+  .turnbar { gap: 0.35rem; }
   .turnbar .hint {
     display: -webkit-box;
     flex: 1 1 100%;
@@ -387,7 +388,7 @@ body { overscroll-behavior: none; }
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
   }
-  .turnbar button { flex: 1 }
+  .turnbar button { flex: 1; }
   .viewport { min-height: 200px; }
   /* Окна торговли и строительства выезжают снизу на всю ширину. */
   .trade-window, .build-window {
@@ -405,3 +406,15 @@ body { overscroll-behavior: none; }
   .pick-banner { justify-content: space-between; width: calc(100% - 1rem); }
   .menu-panel { max-width: calc(100vw - 1.5rem); }
 }
+
+/* ---------- Договоры между игроками ---------- */
+.trade-list .step { padding: 0.1rem 0.6rem; }
+.contract-part { display: grid; gap: 0.4rem; }
+.contract-part .part-head { text-align: left; }
+.part-body { display: grid; gap: 0.4rem; padding: 0.4rem 0 0.4rem 0.6rem; border-left: 2px solid var(--line); }
+.part-body p { margin: 0; font-size: 0.85rem; }
+.contract { display: grid; gap: 0.35rem; padding: 0.6rem; border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, 0.03); }
+.contract .terms { margin: 0; padding-left: 1.1rem; font-size: 0.9rem; }
+.contract .due { margin: 0; color: var(--accent); font-weight: 600; }
+.contract .terminate { display: grid; gap: 0.4rem; padding-top: 0.4rem; border-top: 1px solid var(--line); }
+.trade-body h3 { margin: 0.4rem 0 0; font-size: 0.85rem; font-weight: 600; }

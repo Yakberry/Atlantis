@@ -1,17 +1,20 @@
 <script setup lang="ts">
-import { isValidDrop, RESOURCES, supplyNeeds, type Resource, type Stock, type BuildingType, type Coord, type GameEvent, type ManeuverStage, type Phase } from '@atlantis/shared';
+import { isValidDrop, RESOURCES, supplyNeeds, type ContractTerms, type Resource, type Stock, type BuildingType, type Coord, type GameEvent, type ManeuverStage, type Phase } from '@atlantis/shared';
 import { computed, ref, watch } from 'vue';
 import { RESOURCE_LABELS } from '../board/palette';
 import { POPUP_MS, type Popup } from '../board/popups';
 import { useAction } from '../composables/useAction';
 import { useRoomStore } from '../stores/room';
 import { useSessionStore } from '../stores/session';
+import { useUiStore } from '../stores/ui';
+import ContractsWindow from './ContractsWindow.vue';
 import HexBoard from './HexBoard.vue';
 import PhaseBar from './PhaseBar.vue';
 import TradeWindow, { type TradeTab } from './TradeWindow.vue';
 
 const store = useRoomStore();
 const session = useSessionStore();
+const ui = useUiStore();
 const { error, run } = useAction();
 
 const game = computed(() => store.room?.game);
@@ -99,6 +102,7 @@ const hint = computed(() => {
     return 'Не хватает ресурсов на снабжение. Нажимайте на юнитов и постройки, которые останутся без него (они будут удалены), пока оставшимся не хватит.';
   }
   if (store.isReady) return `Ждём: ${waitingFor.value}`;
+  if (mustSettle.value) return 'Сначала выплатите или расторгните договоры, по которым платёж обязателен в этом ходу (кнопка «Договоры»).';
   return game.value.phase === 'maneuver' ? MANEUVER_HINTS[game.value.stage] : HINTS[game.value.phase];
 });
 
@@ -113,6 +117,7 @@ const tradeOpen = ref(false);
 const tradeTab = ref<TradeTab>('merchants');
 /** Кнопка открывает окно на своей вкладке; повторное нажатие на ту же вкладку закрывает его. */
 const openTrade = (tab: TradeTab) => {
+  ui.contractsOpen = false;
   tradeOpen.value = !(tradeOpen.value && tradeTab.value === tab);
   tradeTab.value = tab;
 };
@@ -124,6 +129,25 @@ watch(
   },
 );
 const tradeWith = (give: Stock, get: Resource) => run(() => store.sendAction({ type: 'trade', give, get }));
+
+// ---------- договоры между игроками ----------
+const others = computed(() =>
+  (store.room?.members ?? []).filter((member) => member.id !== me.value && game.value?.playerOrder.includes(member.id)),
+);
+const names = computed(() => Object.fromEntries((store.room?.members ?? []).map((member) => [member.id, member.name])));
+/** Есть платёж по договору, без которого нельзя закончить ход. */
+const mustSettle = computed(() => game.value?.contracts.some((c) => c.mandatory) ?? false);
+const offerContract = (to: string, terms: ContractTerms) => run(() => store.sendAction({ type: 'contract_offer', to, terms }));
+const contractAction = (type: 'contract_accept' | 'contract_decline' | 'contract_pay', contractId: string) =>
+  run(() => store.sendAction({ type, contractId }));
+const terminateContract = (contractId: string, give: Stock) =>
+  run(() => store.sendAction({ type: 'contract_terminate', contractId, give }));
+watch(
+  () => ui.contractsOpen,
+  (open) => {
+    if (open) tradeOpen.value = false;
+  },
+);
 const endPhase = () => run(async () => showPopups(await store.sendAction({ type: 'end_phase' })));
 const confirmDrop = () =>
   run(async () => {
@@ -154,8 +178,24 @@ const confirmDrop = () =>
         :open="tradeOpen"
         :trade="trade"
         :stock="game.stock"
+        :others="others"
         @close="tradeOpen = false"
         @accept="tradeWith"
+        @offer="offerContract"
+      />
+      <ContractsWindow
+        v-model:tab="ui.contractsTab"
+        :open="ui.contractsOpen"
+        :contracts="game.contracts"
+        :me="me"
+        :names="names"
+        :stock="game.stock"
+        :trade-phase="game.phase === 'trade'"
+        @close="ui.contractsOpen = false"
+        @accept="contractAction('contract_accept', $event)"
+        @decline="contractAction('contract_decline', $event)"
+        @pay="contractAction('contract_pay', $event)"
+        @terminate="terminateContract"
       />
     </div>
 
@@ -179,7 +219,7 @@ const confirmDrop = () =>
               Торговля ({{ trade.price ?? '—' }})
             </button>
           </template>
-          <button :disabled="store.isReady" @click="endPhase">{{ END_LABELS[game.phase] }}</button>
+          <button :disabled="store.isReady || (game.phase === 'trade' && mustSettle)" @click="endPhase">{{ END_LABELS[game.phase] }}</button>
         </template>
       </template>
     </div>

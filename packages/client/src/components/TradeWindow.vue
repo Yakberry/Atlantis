@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { GameView, Resource, Stock } from '@atlantis/shared';
+import type { ContractTerms, GameView, Resource, Stock } from '@atlantis/shared';
+import PlayerTradePanel from './PlayerTradePanel.vue';
 import TradePanel from './TradePanel.vue';
 
 export type TradeTab = 'merchants' | 'players';
@@ -8,12 +9,12 @@ export type TradeTab = 'merchants' | 'players';
  * Окно торговли: выдвигается с левого края поверх трети контейнера карты. Лежит внутри контейнера
  * (position: absolute), поэтому карту не двигает и нижние кнопки не заслоняет.
  */
-defineProps<{ open: boolean; tab: TradeTab; trade: NonNullable<GameView['trade']>; stock: Stock }>();
-const emit = defineEmits<{ 'update:tab': [tab: TradeTab]; close: []; accept: [give: Stock, get: Resource] }>();
+defineProps<{ open: boolean; tab: TradeTab; trade: NonNullable<GameView['trade']>; stock: Stock; others: { id: string; name: string }[] }>();
+const emit = defineEmits<{ 'update:tab': [tab: TradeTab]; close: []; accept: [give: Stock, get: Resource]; offer: [to: string, terms: ContractTerms] }>();
 
 const TABS: { id: TradeTab; label: string }[] = [
   { id: 'merchants', label: 'С купцами' },
-  { id: 'players', label: 'С игроками' },
+  { id: 'players', label: 'С игроком' },
 ];
 </script>
 
@@ -37,7 +38,7 @@ const TABS: { id: TradeTab; label: string }[] = [
 
       <div class="trade-body">
         <TradePanel v-if="tab === 'merchants'" :trade="trade" :stock="stock" @accept="(give, get) => emit('accept', give, get)" />
-        <p v-else class="muted">Торговля между игроками появится здесь.</p>
+        <PlayerTradePanel v-else :others="others" :stock="stock" @offer="(to, terms) => emit('offer', to, terms)" />
       </div>
     </aside>
   </Transition>

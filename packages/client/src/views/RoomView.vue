@@ -11,10 +11,12 @@ import { useAction } from '../composables/useAction';
 import { useMobile } from '../composables/useMobile';
 import { useRoomStore } from '../stores/room';
 import { useSettingsStore } from '../stores/settings';
+import { useUiStore } from '../stores/ui';
 
 const props = defineProps<{ id: string }>();
 const store = useRoomStore();
 const settings = useSettingsStore();
+const ui = useUiStore();
 const router = useRouter();
 const { error: joinError, run: tryJoin } = useAction();
 const { error: actionError, run } = useAction();
@@ -59,6 +61,9 @@ onBeforeUnmount(() => store.detach());
         <!-- Шапка в одну строку: комната, кнопка выхода и простое отображение живут в меню настроек -->
         <header class="stage-header">
           <PlayerList :room="store.room" />
+          <button v-if="store.room.game" class="secondary" type="button" @click="ui.contractsOpen = !ui.contractsOpen">
+            Договоры<span v-if="store.room.game.contractAlerts > 0" class="chat-badge">{{ store.room.game.contractAlerts }}</span>
+          </button>
           <button class="secondary" type="button" @click="toggleChat">
             {{ chatLabel }}<span v-if="unread > 0" class="chat-badge">{{ unread }}</span>
           </button>
