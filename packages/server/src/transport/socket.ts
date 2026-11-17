@@ -13,6 +13,7 @@ import {
 } from '@atlantis/shared';
 import type { Server } from 'socket.io';
 import type { z } from 'zod';
+import { config } from '../config';
 import { pool } from '../db/pool';
 import { AppError } from '../errors';
 import * as chat from '../modules/chat/chat.service';
@@ -73,6 +74,7 @@ async function publishReports(io: AppServer, room: RoomState, reports: Report[])
 
 export function registerSocket(io: AppServer): void {
   io.use(async (socket, next) => {
+    if (io.engine.clientsCount > config.maxConnections) return next(new Error('busy'));
     const token = tokenSchema.safeParse(socket.handshake.auth.token);
     const player = token.success ? await findPlayerByToken(pool, token.data) : null;
     if (!player) return next(new Error('unauthorized'));
@@ -82,6 +84,22 @@ export function registerSocket(io: AppServer): void {
 
   io.on('connection', (socket) => {
     const { player } = socket.data;
+
+    // Не больше socketEventsPerSecond событий в секунду (с запасом на всплеск): защита от флуда одним клиентом.
+    const rate = config.socketEventsPerSecond;
+    let tokens = rate * 2;
+    let last = Date.now();
+    socket.use(([, ...args], next) => {
+      const now = Date.now();
+      tokens = Math.min(rate * 2, tokens + ((now - last) / 1000) * rate);
+      last = now;
+      if (tokens >= 1) {
+        tokens -= 1;
+        return next();
+      }
+      const ack = args.at(-1);
+      if (typeof ack === 'function') ack({ ok: false, error: 'Слишком много действий подряд, подождите секунду' });
+    });
 
     const leaveRooms = async () => {
       for (const room of socket.rooms) if (room !== socket.id) await socket.leave(room);

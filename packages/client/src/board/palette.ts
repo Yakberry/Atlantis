@@ -10,7 +10,7 @@ export const RESOURCE_COLORS: Record<Resource, string> = {
 export { RESOURCE_LABELS } from '@atlantis/shared';
 
 const PLAYER_COLORS = ['#ff3b4e', '#19d3ff', '#b06bff', '#ff9e2c'];
-export const playerColor = (slot: number): string => PLAYER_COLORS[slot] ?? '#cccccc';
+export const playerColor = (slot: number | null): string => slot !== null ? PLAYER_COLORS[slot] ?? '#cccccc' : '';
 
 export const FOG_FILL = '#2b383d';
 export const FOG_STROKE = '#36454b';

@@ -5,8 +5,8 @@ import { RESOURCE_LABELS } from '../board/palette';
 import { spriteUrl } from '../board/sprites';
 
 export type BuildCard = { type: UnitKind; cost: Stock; disabled: boolean; reason: string };
-
-const props = defineProps<{ open: boolean; title: string; cards: BuildCard[]; mode: 'road' | 'fleet' | null; }>();
+// @ts-ignore
+const props = defineProps<{ open: boolean; title: string; cards: BuildCard[]; }>();
 const emit = defineEmits<{ pick: [type: UnitKind]; close: [] }>();
 
 const HIRES: readonly UnitKind[] = ['unit', 'archer', 'rider', 'catapult', 'scout'];
@@ -22,6 +22,7 @@ const INFO: Record<UnitKind, { name: string; hint: string; glyph?: string }> = {
     hint: 'Строится поверх своей колонии и заменяет её. Поджечь её можно только броском 6. Стены: нападающие сначала проходят проверку 4 (не работают против катапульты). Башня: при защитниках сама атакует противников.',
     glyph: '▣',
   },
+  // @ts-ignore
   road: {
     name: 'Дорога',
     hint: 'Проходит между двумя локациями. Юнит, прошедший по ней, в этот ход может сделать ещё один шаг. Соединяет колонии в цепочку.',

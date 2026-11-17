@@ -28,7 +28,8 @@ export async function updateRoom(
             host_id = coalesce($3, host_id),
             map_size = coalesce($4, map_size),
             map_style = coalesce($5, map_style),
-            game    = coalesce($6, game)
+            game    = coalesce($6, game),
+            updated_at = now()
       where id = $1`,
     [
       id,

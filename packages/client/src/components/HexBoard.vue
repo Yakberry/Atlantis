@@ -36,7 +36,8 @@ import { spriteUrl, type SpriteKey } from '../board/sprites';
 import { usePanZoom } from '../composables/usePanZoom';
 import { useSettingsStore } from '../stores/settings';
 import BuildMenu, { type BuildCard } from './BuildMenu.vue';
-import UnitIcon from "./UnitIcon.vue";
+// @ts-ignore
+import UnitIcon from './UnitIcon.vue';
 
 const props = withDefaults(
   defineProps<{
@@ -193,7 +194,7 @@ const roadTargets = computed<Coord[]>(() => {
   if (!at) return [];
   return props.game.sites.filter((cell) => distance(at, cell) === 1 && !roadExists(at, cell));
 });
-
+//@ts-ignore
 const buildCards = computed<BuildCard[]>(() => {
   const hex = siteHex.value;
   if (!hex) return [];

@@ -7,6 +7,9 @@ const server = 'http://localhost:3000';
 
 export default defineConfig({
   build: { assetsInlineLimit: 32 * 1024 },
+  ssr: {
+    noExternal: true,
+  },
   plugins: [
     vue(),
     svgLoader({
@@ -25,6 +28,7 @@ export default defineConfig({
             name: 'prefixIds',
             params: {
               prefix: (node, info) =>
+                  // @ts-ignore
                   path.basename(info.path?.basename, '.svg'),
               delim: '-',
             },

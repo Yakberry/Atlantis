@@ -23,10 +23,10 @@ const toUnitView = (unit: Unit, viewerId: string): UnitView => {
 };
 
 /** Игрок видит локацию: рядом с ней (в пределах обзора вида) стоит его юнит или постройка. */
-export const canSee = (state: GameState, viewerId: string, cell: Coord): boolean =>
+export const canSee = (state: GameState, viewerId: string, cell: Coord, sight: Set<string> = fleetSight(state, viewerId)): boolean =>
   // Обзор считается от последней синхронизированной позиции (`revealed`): шаг юнита меняет обзор только после синхронизации.
   state.units.some((unit) => unit.ownerId === viewerId && distance(unit.revealed, cell) <= UNIT_KINDS[unit.kind].vision) ||
-  fleetSight(state, viewerId).has(`${cell.q},${cell.r}`); // флот видит своё море и омываемые им локации
+  sight.has(`${cell.q},${cell.r}`); // флот видит своё море и омываемые им локации (`sight` — заранее посчитанный обзор флота)
 
 /** Торговля глазами игрока: принятые им цены и текущее предложение; будущие цены он не видит. */
 function tradeView(state: GameState, viewerId: string): NonNullable<GameView['trade']> {
@@ -54,6 +54,7 @@ function tradeView(state: GameState, viewerId: string): NonNullable<GameView['tr
  * - Чужие юниты видны там, где их показали при последнем раскрытии манёвра; чужая усталость скрыта.
  */
 export function viewFor(state: GameState, viewerId: string): GameView {
+  const sight = fleetSight(state, viewerId); // один раз на снимок
   const { hexes, units, stock, shownStock, roads, market, contracts: _contracts, nextId: _nextId, ...rest } = state;
   const eyes = units.filter((unit) => unit.ownerId === viewerId);
   const shownRoads = roads.filter((road) => !road.fresh || road.ownerId === viewerId);
@@ -70,7 +71,7 @@ export function viewFor(state: GameState, viewerId: string): GameView {
         .map(([id, rival]) => [id, Object.values(rival).reduce((sum, amount) => sum + amount, 0)] as const),
     ),
     supply: supplyNeeds(eyes),
-    roads: shownRoads.filter((road) => canSee(state, viewerId, road.a) || canSee(state, viewerId, road.b)),
+    roads: shownRoads.filter((road) => canSee(state, viewerId, road.a, sight) || canSee(state, viewerId, road.b, sight)),
     chains: chainsOf(state, viewerId, shownRoads),
     contracts: contractViews(state, viewerId),
     contractAlerts: contractAlerts(state, viewerId),
@@ -84,7 +85,7 @@ export function viewFor(state: GameState, viewerId: string): GameView {
     sites: state.phase === 'build' && !state.ready.includes(viewerId) ? buildSites(state, viewerId) : [],
     hexes: hexes.map((hex) => {
       const { q, r } = hex;
-      if (!canSee(state, viewerId, hex)) return { q, r, visible: false };
+      if (!canSee(state, viewerId, hex, sight)) return { q, r, visible: false };
 
       const here = units.filter(
         (unit) => (unit.ownerId === viewerId || !unit.fresh) && sameCell(knownPosition(unit, viewerId), hex),

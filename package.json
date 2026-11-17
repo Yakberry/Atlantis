@@ -9,11 +9,12 @@
     "db:up": "docker compose up -d db",
     "dev": "concurrently -n server,client -c blue,green \"npm:dev -w @atlantis/server\" \"npm:dev -w @atlantis/client\"",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "build": "npm run build -w @atlantis/client && npm run build -w @atlantis/server"
+    "build": "npm run build -w @atlantis/client && npm run build -w @atlantis/server",
+    "start": "npm run start -w @atlantis/server",
+    "start:local": "npm run build && npm run dev"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",
-    "svgo": "^4.1.0",
     "typescript": "^5.6.0",
     "vite-svg-loader": "^5.1.3"
   }

@@ -1,3 +1,4 @@
+import { config } from '../../config';
 import { randomInt } from 'node:crypto';
 import {
   applyAction,
@@ -33,6 +34,9 @@ const generateCode = () =>
 
 export const createRoom = (player: Player): Promise<RoomState> =>
   transaction(async (db) => {
+    // Потолок числа комнат: сервер не берёт больше, чем рассчитан выдержать.
+    const { rows } = await db.query<{ count: number }>('select count(*)::int as count from rooms');
+    if ((rows[0]?.count ?? 0) >= config.maxRooms) throw new AppError('Сервер заполнен: слишком много активных комнат. Попробуйте позже.');
     const id = generateCode();
     await repo.insertRoom(db, id, player.id);
     await repo.addMember(db, id, player.id);
