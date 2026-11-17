@@ -62,8 +62,8 @@ export function formatReport(data: ReportData, room: RoomState): string | null {
       if (instant) parts.push(`мгновенно: ${a} отдаёт ${list(instant.give)}, ${b} отдаёт ${list(instant.get)}`);
       if (perTurn) parts.push(`каждый ход (${perTurn.turns}): ${a} платит ${list(perTurn.give)}, ${b} платит ${list(perTurn.get)}`);
       if (debt) {
-        const [lender, borrower] = debt.lend ? [a, b] : [b, a];
-        parts.push(`долг: ${lender} даёт ${borrower} ${list(debt.amount)}, возврат не позже ${debt.turns}-го хода`);
+        const [payer, payee] = debt.give ? [a, b] : [b, a];
+        parts.push(`долговое обязательство: ${payer} выплатит ${payee} ${list(debt.amount)} в течение ${debt.turns} ходов`);
       }
       const fine = penalty > 0 && (perTurn || debt) ? `; штраф за расторжение ${penalty}` : '';
       return `Договор заключён: ${a} и ${b} — ${parts.join('; ')}${fine}.`;

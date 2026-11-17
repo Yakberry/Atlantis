@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { RESOURCES, type BuildingType, type UnitKind, type Stock, type Resource } from '@atlantis/shared';
+import { RESOURCES, type UnitKind, type Stock, type Resource } from '@atlantis/shared';
 import { computed, ref } from 'vue';
-import { RESOURCE_COLORS, RESOURCE_LABELS } from '../board/palette';
+import { RESOURCE_LABELS } from '../board/palette';
 import { spriteUrl } from '../board/sprites';
 
 export type BuildCard = { type: UnitKind; cost: Stock; disabled: boolean; reason: string };
@@ -27,7 +27,6 @@ const INFO: Record<UnitKind, { name: string; hint: string; glyph?: string }> = {
     hint: 'Проходит между двумя локациями. Юнит, прошедший по ней, в этот ход может сделать ещё один шаг. Соединяет колонии в цепочку.',
     glyph: '═',
   },
-  // Новые здания и юниты: только спрайт, без запасных значков.
   fleet: { name: 'Флот', hint: 'Строится на побережье в сторону выбранного моря. Производит d6 пищи, соединяет в цепочку все ваши прибрежные колонии этого моря, показывает все омываемые им локации и позволяет юнитам переходить между ними. Снабжение: 1 лес и 1 медь.' },
   guild: {
     name: 'Гильдия',
@@ -39,7 +38,7 @@ const INFO: Record<UnitKind, { name: string; hint: string; glyph?: string }> = {
   archer: { name: 'Лучник', hint: 'Нанимаются в казармах. Снабжение: 1 еда и 1 медь.' },
   rider: { name: 'Кавалерия', hint: 'Нанимается в казармах. Ходит на этапе «кавалерия». Снабжение: 1 еда и 1 медь.' },
   catapult: { name: 'Катапульта', hint: 'Нанимается в казармах. Отключает стены, особые здания поджигает без броска. Снабжение: 1 еда и 1 медь.' },
-  scout: { name: 'Разведчик', hint: 'Производит любая ваша колония. Поджигать колонии и здания не умеют. Снабжение: 1 еда и 1 медь.' },
+  scout: { name: 'Разведчик', hint: 'Производит любая ваша колония. Поджигать колонии и здания не умеют. Снабжение: 1 еда.' },
 };
 
 const tab = ref<'buildings' | 'units'>('buildings');

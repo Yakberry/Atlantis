@@ -46,22 +46,47 @@ export function toastFromReport(data: ReportData, { me, names, hexName }: Contex
     }
 
     case 'contract': {
+      const iAmActor = data.actorId === me;
       const actor = who(data.actorId);
+      const partner = who(data.fromId === me ? data.toId : data.fromId);
       const open = (tab: 'offers' | 'active' | 'history') => ({ type: 'contract' as const, contractId: data.contractId, tab });
       const base = `contract:${data.contractId}:${data.event}`;
+      // Мгновенный обмен глазами игрока: сколько получил минус сколько отдал.
+      const instantNet = () => {
+        const net: Partial<Record<Resource, number>> = {};
+        const instant = data.terms.instant;
+        if (!instant) return net;
+        const [got, gave] = data.fromId === me ? [instant.get, instant.give] : [instant.give, instant.get];
+        for (const resource of RESOURCES) if (got[resource] !== gave[resource]) net[resource] = got[resource] - gave[resource];
+        return net;
+      };
       switch (data.event) {
         case 'offered':
           return { key: base, title: `Новое предложение от ${actor}`, amounts: {}, action: open('offers') };
         case 'accepted':
-          return data.actorId === me
-            ? null
-            : { key: base, title: `${actor} принял договор`, amounts: {}, action: open(data.terms.perTurn || data.terms.debt ? 'active' : 'history') };
+          return {
+            key: base,
+            title: iAmActor ? `Вы приняли договор: ${partner}` : `${actor} принял договор`,
+            amounts: instantNet(),
+            action: open(data.terms.perTurn || data.terms.debt ? 'active' : 'history'),
+          };
         case 'declined':
           return { key: base, title: `${actor} отказался от договора`, amounts: {}, action: open('history') };
         case 'terminated':
-          return { key: base, title: `${actor} расторг договор`, note: 'Штраф получен', amounts: signed(data.paid, 1), action: open('history') };
+          return {
+            key: base,
+            title: iAmActor ? `Вы расторгли договор: ${partner}` : `${actor} расторг договор`,
+            note: 'Штраф',
+            amounts: signed(data.paid, iAmActor ? -1 : 1),
+            action: open('history'),
+          };
         case 'paid':
-          return { key: `paid:${data.actorId}`, title: `Выплата от ${actor}`, amounts: signed(data.paid, 1), action: open('active') };
+          return {
+            key: iAmActor ? `paid-out:${partner}` : `paid:${data.actorId}`,
+            title: iAmActor ? `Выплачено ${partner}` : `Выплата от ${actor}`,
+            amounts: signed(data.paid, iAmActor ? -1 : 1),
+            action: open('active'),
+          };
       }
       return null;
     }

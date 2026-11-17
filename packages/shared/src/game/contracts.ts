@@ -50,8 +50,8 @@ export function owed(state: GameState, c: Contract, playerId: string) {
         perTurn = true;
       }
     }
-    if (d && mine === (d.lend ? 'to' : 'from') && k <= d.turns && !c.debtRepaid && sum(d.amount) > 0) {
-      cost = mix(cost, d.amount, 1); // возвращается та же сумма
+    if (d && mine === (d.give ? 'from' : 'to') && k <= d.turns && !c.debtRepaid && sum(d.amount) > 0) {
+      cost = mix(cost, d.amount, 1);
       debt = true;
     }
   }
@@ -136,18 +136,6 @@ function acceptContract(state: GameState, playerId: string, id: string): Result<
     if (!fits(to, instant.get)) return fail('Вам не хватает ресурсов для мгновенного обмена');
     to = mix(mix(to, instant.get, -1), c.reserved, 1);
     from = mix(from, instant.get, 1);
-  }
-  if (debt) {
-    // Кредитор отдаёт сумму заёмщику сразу; возвращается та же сумма.
-    if (debt.lend) {
-      if (!fits(from, debt.amount)) return fail('У предложившего не хватает ресурсов для займа');
-      from = mix(from, debt.amount, -1);
-      to = mix(to, debt.amount, 1);
-    } else {
-      if (!fits(to, debt.amount)) return fail('Вам не хватает ресурсов, чтобы дать в долг');
-      to = mix(to, debt.amount, -1);
-      from = mix(from, debt.amount, 1);
-    }
   }
   const lasting = c.terms.perTurn !== undefined || debt !== undefined;
   const accepted: Contract = {
@@ -272,7 +260,7 @@ function reportFor(before: GameState, after: GameState, actorId: string, action:
   if (!c) return null;
   const event = EVENTS[action.type];
   const audience =
-    event === 'offered' ? [c.toId] : event === 'accepted' ? [c.fromId, c.toId] : event === 'declined' ? [c.fromId] : [other(c, actorId)];
+    event === 'offered' ? [c.toId] : event === 'declined' ? [c.fromId] : [c.fromId, c.toId]; // принятие, выплата и расторжение касаются обеих сторон
   const paid = mix(stockOf(before, actorId), stockOf(after, actorId), -1);
   return { audience, data: { type: 'contract', event, contractId: c.id, fromId: c.fromId, toId: c.toId, actorId, terms: c.terms, paid } };
 }

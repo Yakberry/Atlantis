@@ -105,7 +105,6 @@ export const UNIT_KINDS = {
     vision: 2, mobile: true, fast: true, harvests: false, colony: false, building: false, terrain: 'land',
     supply: { food: 1, copper: 1 }, combat: 'cavalry', burn: null, walls: false, tower: false,
   },
-  // Заготовки: нужны таблице боя и правилам про катапульту; пока их нечем создать. Свойства — как у фаланги, ждут уточнений.
   archer: {
     vision: 2, mobile: true, fast: false, harvests: false, colony: false, building: false, terrain: 'land',
     supply: { food: 1, copper: 1 }, combat: 'archer', burn: null, walls: false, tower: false,
@@ -243,14 +242,14 @@ export type ContractPart = { give: Stock; get: Stock };
  * Условия договора между игроками; любая часть может отсутствовать.
  * - `instant`: мгновенный обмен при принятии;
  * - `perTurn`: `turns` ходов подряд (со следующего хода) каждая сторона платит свою часть кнопкой «Выплатить»;
- * - `debt`: заём без процентов: `lend` — предложивший даёт в долг (иначе берёт); кредитор отдаёт `amount` сразу, заёмщик возвращает
- *   ту же сумму не позже последнего хода из `turns` (можно раньше);
+ * - `debt`: долговое обязательство: один игрок обязан выплатить другому `amount` в течение `turns` ходов (можно раньше, на последнем
+ *   ходу обязательно), второй ничего не платит; `give` — должник предложивший (иначе должен получатель);
  * - `penalty`: сколько ресурсов отдаёт сторона, расторгающая действующий договор (или все, если их меньше).
  */
 export type ContractTerms = {
   instant?: ContractPart;
   perTurn?: ContractPart & { turns: number };
-  debt?: { amount: Stock; lend: boolean; turns: number };
+  debt?: { amount: Stock; give: boolean; turns: number };
   penalty: number;
 };
 export type Contract = {

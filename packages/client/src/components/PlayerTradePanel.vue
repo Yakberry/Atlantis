@@ -16,8 +16,8 @@ const SECTIONS = [
 type Key = (typeof SECTIONS)[number]['key'];
 
 const form = ref<Record<Key, Part>>({ instant: blank(), perTurn: blank() });
-/** Долг — заём без процентов: одна сумма, возвращается та же. `lend` — вы даёте в долг (иначе берёте). */
-const debt = ref({ open: false, amount: emptyStock(), lend: false, turns: 3 });
+/** Долговое обязательство: один игрок выплачивает другому сумму в течение срока. `give` — должны вы (иначе вам должны). */
+const debt = ref({ open: false, amount: emptyStock(), give: true, turns: 3 });
 const target = ref('');
 const penalty = ref(0);
 
@@ -33,10 +33,10 @@ function send() {
   const terms: ContractTerms = { penalty: lasting.value ? Math.max(0, Math.floor(penalty.value) || 0) : 0 };
   if (filled(instant)) terms.instant = { give: instant.give, get: instant.get };
   if (filled(perTurn)) terms.perTurn = { give: perTurn.give, get: perTurn.get, turns: turnsOf(perTurn.turns) };
-  if (debtFilled.value) terms.debt = { amount: debt.value.amount, lend: debt.value.lend, turns: turnsOf(debt.value.turns) };
+  if (debtFilled.value) terms.debt = { amount: debt.value.amount, give: debt.value.give, turns: turnsOf(debt.value.turns) };
   emit('offer', target.value, terms);
   form.value = { instant: blank(), perTurn: blank() };
-  debt.value = { open: false, amount: emptyStock(), lend: false, turns: 3 };
+  debt.value = { open: false, amount: emptyStock(), give: true, turns: 3 };
   penalty.value = 0;
 }
 </script>
@@ -78,17 +78,17 @@ function send() {
 
       <div class="contract-part">
         <button type="button" class="secondary part-head" :aria-expanded="debt.open" @click="debt.open = !debt.open">
-          {{ debt.open ? '▾' : '▸' }} Долг
+          {{ debt.open ? '▾' : '▸' }} Долговое обязательство
         </button>
         <div v-if="debt.open" class="part-body">
-          <p class="muted">Заём без процентов: возвращается та же сумма не позже последнего хода срока.</p>
-          <div class="toggle" role="group" aria-label="Направление долга">
-            <button type="button" :class="['secondary', { active: !debt.lend }]" @click="debt.lend = false">Взять в долг</button>
-            <button type="button" :class="['secondary', { active: debt.lend }]" @click="debt.lend = true">Дать в долг</button>
+          <p class="muted">Один игрок обязан выплатить другому сумму в течение срока, второй ничего не платит.</p>
+          <div class="toggle" role="group" aria-label="Кто выплачивает">
+            <button type="button" :class="['secondary', { active: debt.give }]" @click="debt.give = true">Отдать</button>
+            <button type="button" :class="['secondary', { active: !debt.give }]" @click="debt.give = false">Получить</button>
           </div>
-          <ResourcePicker v-model="debt.amount" :limit="debt.lend ? stock : undefined" />
+          <ResourcePicker v-model="debt.amount" />
           <label class="field">
-            Ходов (1–{{ MAX_CONTRACT_TURNS }})
+            Срок, ходов (1–{{ MAX_CONTRACT_TURNS }})
             <input v-model.number="debt.turns" type="number" min="1" :max="MAX_CONTRACT_TURNS" />
           </label>
         </div>

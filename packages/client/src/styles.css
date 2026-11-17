@@ -240,7 +240,7 @@ button.secondary { background: transparent; border-color: var(--line); color: va
   z-index: 6;
   display: flex;
   flex-direction: column;
-  width: 31%;
+  width: 40%;
   min-width: 19rem;
   overflow: hidden;
   border-right: 1px solid var(--line);
@@ -392,7 +392,7 @@ body { overscroll-behavior: none; }
   .viewport { min-height: 200px; }
   /* Окна торговли и строительства выезжают снизу на всю ширину. */
   .trade-window, .build-window, .contracts-window {
-    top: 0;
+    top: auto;
     right: 0;
     width: 100%;
     min-width: 0;
@@ -447,3 +447,46 @@ body { overscroll-behavior: none; }
 @media (max-width: 720px), (pointer: coarse) and (max-height: 520px) {
   .toast-host { top: 0.5rem; right: 0.5rem; bottom: auto; }
 }
+
+/* ---------- Окна торговли и договоров: рядом, фиксированной ширины (чат на них не влияет) ---------- */
+.side-windows { position: absolute; top: 0; bottom: 0; left: 0; z-index: 6; display: flex; pointer-events: none; }
+.side-windows > aside { pointer-events: auto; }
+.trade-window, .build-window, .contracts-window { width: 27rem; min-width: 0; }
+.side-windows .trade-window, .side-windows .contracts-window { position: relative; top: auto; bottom: auto; left: auto; height: 100%; }
+@media (max-width: 720px), (pointer: coarse) and (max-height: 520px) {
+  .side-windows { right: 0; }
+  .trade-window, .build-window, .contracts-window { width: 100%; }
+  .side-windows .trade-window, .side-windows .contracts-window { position: absolute; top: auto; right: 0; bottom: 0; left: 0; height: auto; }
+}
+
+/* ---------- Компактные договоры ---------- */
+.contract-list { display: grid; gap: 0.35rem; margin: 0; padding: 0; list-style: none; }
+.contract-row { position: relative; padding: 0.35rem 0.5rem; border: 1px solid var(--line); border-radius: 8px; font-size: 0.85rem; line-height: 1.35; }
+.contract-row.due { border-color: var(--accent); }
+.contract-row.highlighted { box-shadow: 0 0 0 2px var(--accent); }
+.contract-row .line { display: flex; flex-wrap: wrap; align-items: center; gap: 0.15rem 0.6rem; }
+.contract-row .who { font-weight: 700; }
+.contract-row .status { margin-left: auto; color: var(--muted); font-size: 0.8rem; }
+.contract-row .due-mark { color: var(--accent); }
+.contract-row .actions {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.3rem;
+  display: none;
+  gap: 0.3rem;
+  padding: 0.15rem;
+  border-radius: 6px;
+  background: var(--panel);
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.5);
+}
+.contract-row:hover .actions, .contract-row:focus-within .actions, .contract-row.open .actions { display: flex; }
+.contract-row .actions button { padding: 0.2rem 0.6rem; font-size: 0.8rem; }
+.contract-row .terminate { display: grid; gap: 0.4rem; margin-top: 0.4rem; padding-top: 0.4rem; border-top: 1px solid var(--line); }
+@media (hover: none) {
+  .contract-row .actions { position: static; display: flex; margin-top: 0.3rem; padding: 0; background: transparent; box-shadow: none; }
+}
+.amounts { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; vertical-align: middle; }
+.amount { display: inline-flex; align-items: center; gap: 0.15rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.amount.minus { color: #ff9b9b; }
+.amount.plus { color: #8ee08e; }
+.amount .resource-icon { width: 1rem; height: 1rem; }

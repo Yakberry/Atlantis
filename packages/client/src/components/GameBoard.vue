@@ -5,6 +5,7 @@ import { RESOURCE_LABELS } from '../board/palette';
 import { toastFromReport } from '../board/toasts';
 import { POPUP_MS, type Popup } from '../board/popups';
 import { useAction } from '../composables/useAction';
+import { useMobile } from '../composables/useMobile';
 import { useRoomStore } from '../stores/room';
 import { useSessionStore } from '../stores/session';
 import { useToastStore, type ToastAction } from '../stores/toasts';
@@ -19,6 +20,7 @@ const store = useRoomStore();
 const session = useSessionStore();
 const ui = useUiStore();
 const toasts = useToastStore();
+const isMobile = useMobile();
 const boardRef = ref<InstanceType<typeof HexBoard> | null>(null);
 const { error, run } = useAction();
 
@@ -151,7 +153,7 @@ const tradeOpen = ref(false);
 const tradeTab = ref<TradeTab>('merchants');
 /** Кнопка открывает окно на своей вкладке; повторное нажатие на ту же вкладку закрывает его. */
 const openTrade = (tab: TradeTab) => {
-  ui.contractsOpen = false;
+  if (isMobile.value) ui.contractsOpen = false;
   tradeOpen.value = !(tradeOpen.value && tradeTab.value === tab);
   tradeTab.value = tab;
 };
@@ -179,7 +181,7 @@ const terminateContract = (contractId: string, give: Stock) =>
 watch(
   () => ui.contractsOpen,
   (open) => {
-    if (open) tradeOpen.value = false;
+    if (open && isMobile.value) tradeOpen.value = false; // на телефоне окна — шторки друг над другом; на компьютере открываются рядом
   },
 );
 const endPhase = () => run(async () => showPopups(await store.sendAction({ type: 'end_phase' })));
@@ -207,6 +209,7 @@ const confirmDrop = () =>
         @build="build"
         @toggle-supply="toggleSupply"
       />
+      <div class="side-windows">
       <TradeWindow
         v-if="trade"
         v-model:tab="tradeTab"
@@ -233,6 +236,7 @@ const confirmDrop = () =>
         @pay="contractAction('contract_pay', $event)"
         @terminate="terminateContract"
       />
+      </div>
       <ToastHost @action="onToastAction" />
     </div>
 
